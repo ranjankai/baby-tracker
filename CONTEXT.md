@@ -78,12 +78,16 @@ An AI-native, mobile-first baby tracker that transitions from a simple logger to
 - [DONE] **01-05-2026**: Renamed "# Stats" dashboard card to "# Diapers".
 - [DONE] **02-05-2026**: Added `visibilitychange` listeners to both `useEffect` data fetchers in `BabyContext.jsx`. App now silently re-fetches all data the moment Safari/Chrome wakes from background, eliminating stale 1000+ minute timers.
 
-- [DONE] **07-05-2026**: Implemented hardened Medicine Tracking System (MedBox).
-  - Architecture: `med_schedules` table with `JSONB medicines` metadata.
-  - NLP config via Gemma (Gemini fallback) with `extractLastJson` parser.
-  - Hardened logic: Defensive null-checks on all DB data + silent-fail UI guard.
-  - Unified daily reset shifted to **Midnight** across all systems.
-  - Time Zone Resilience: Updated `BabyContext.jsx` to use local day boundaries for accurate history filtering in IST.
+- [DONE] **08-05-2026**: Implemented gesture-driven UI with `SwipeableRow`.
+  - Left Swipe: Revealed Note (violet) and Edit (purple) icons from the right.
+  - Right Swipe: Revealed Delete (red) icon from the left.
+  - Snap-open model: Panels stay open after swipe until clicked or row is tapped.
+  - Hit-test fix: Foreground renders first to prevent blocking action button clicks.
+- [DONE] **08-05-2026**: Integrated Recycle Bin system.
+  - Table: `deleted_baby_events` with 10-item FIFO limit (via trigger).
+  - UI: Bottom-sheet modal accessible via header icon (moved next to History).
+  - Logic: `move_to_trash` and `restore_from_trash` RPCs.
+- [DONE] **08-05-2026**: Redeployed to Vercel (https://rskbm.vercel.app).
 
 ## 🐛 Open Bugs
 - None currently known.
