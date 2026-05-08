@@ -94,6 +94,8 @@ function SwipeableRow({ children, onDelete, onEdit, onNote }) {
         <div
           onMouseDown={(e) => e.stopPropagation()}
           onMouseUp={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); close(); onDelete(); }}
           style={{ width: `${Math.max(0, rightRev)}px`, overflow: 'hidden', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: isDragging ? 'none' : 'width 0.25s' }}>
           {rightRev > 20 && <Trash2 size={18} color="white" />}
@@ -105,6 +107,8 @@ function SwipeableRow({ children, onDelete, onEdit, onNote }) {
         <div
           onMouseDown={(e) => e.stopPropagation()}
           onMouseUp={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); close(); onEdit(); }}
           style={{ width: `${Math.max(0, Math.min(revealed - 20, 52))}px`, overflow: 'hidden', background: '#6d28d9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: isDragging ? 'none' : 'width 0.25s' }}>
           {revealed > 40 && <Edit3 size={18} color="white" />}
@@ -112,6 +116,8 @@ function SwipeableRow({ children, onDelete, onEdit, onNote }) {
         <div
           onMouseDown={(e) => e.stopPropagation()}
           onMouseUp={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); close(); onNote(); }}
           style={{ width: `${Math.min(Math.max(0, revealed), 52)}px`, overflow: 'hidden', background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: isDragging ? 'none' : 'width 0.25s' }}>
           {revealed > 20 && <MessageCircle size={18} color="white" />}
