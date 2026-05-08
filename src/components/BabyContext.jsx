@@ -71,32 +71,37 @@ export function BabyProvider({ children }) {
     if (!supabase) return;
 
     const fetchGlobalState = async () => {
-      // 1. Fetch latest 100 events to calculate metrics (Today's counts, last timestamps)
-      // This is independent of the UI filters applied to the main activity list.
-      const { data: recentEvents } = await supabase
-        .from('baby_events')
-        .select('*')
-        .order('start_time', { ascending: false })
-        .limit(100);
+      try {
+        // 1. Fetch latest 100 events to calculate metrics (Today's counts, last timestamps)
+        // This is independent of the UI filters applied to the main activity list.
+        const { data: recentEvents } = await supabase
+          .from('baby_events')
+          .select('*')
+          .order('start_time', { ascending: false })
+          .limit(100);
 
-      const [diaperRes, firstRes] = await Promise.all([
-        supabase.from('baby_events').select('*', { count: 'exact', head: true }).eq('type', 'diaper').eq('is_diaper_free', false),
-        supabase.from('baby_events').select('start_time').order('start_time', { ascending: true }).limit(1),
-      ]);
-      
-      const stats = {
-        totalDiapers: diaperRes.count || 0,
-        firstEventTime: firstRes.data?.[0]?.start_time || null,
-      };
+        const [diaperRes, firstRes] = await Promise.all([
+          supabase.from('baby_events').select('*', { count: 'exact', head: true }).eq('type', 'diaper').eq('is_diaper_free', false),
+          supabase.from('baby_events').select('start_time').order('start_time', { ascending: true }).limit(1),
+        ]);
+        
+        const stats = {
+          totalDiapers: diaperRes.count || 0,
+          firstEventTime: firstRes.data?.[0]?.start_time || null,
+        };
 
-      if (recentEvents) {
-        setMetrics(getMetrics(recentEvents, stats));
-        const feed = recentEvents.find(e => ['top', 'mom_l', 'mom_r'].includes(e.type));
-        if (feed) setLastFeed(feed);
+        if (recentEvents) {
+          setMetrics(getMetrics(recentEvents, stats));
+          const feed = recentEvents.find(e => ['top', 'mom_l', 'mom_r'].includes(e.type));
+          if (feed) setLastFeed(feed);
+        }
+        
+        setAllTimeStats(stats);
+      } catch (err) {
+        console.error('[BabyContext] fetchGlobalState error:', err);
+      } finally {
+        setLoading(false);
       }
-      
-      setAllTimeStats(stats);
-      setLoading(false);
     };
 
     fetchGlobalState();
@@ -161,7 +166,25 @@ export function BabyProvider({ children }) {
 
   const deleteEvent = async (id) => {
     if (!supabase) return;
-    await supabase.from('baby_events').delete().eq('id', id);
+    const { error } = await supabase.rpc('move_to_trash', { target_id: id });
+    if (error) console.error('[BabyContext] move_to_trash error:', error);
+  };
+
+  const restoreFromTrash = async (id) => {
+    if (!supabase) return;
+    const { error } = await supabase.rpc('restore_from_trash', { target_id: id });
+    if (error) console.error('[BabyContext] restore_from_trash error:', error);
+  };
+
+  const fetchDeletedEvents = async () => {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from('deleted_baby_events')
+      .select('*')
+      .order('deleted_at', { ascending: false })
+      .limit(10);
+    if (error) { console.error('[BabyContext] fetchDeletedEvents error:', error); return []; }
+    return data || [];
   };
 
   const toggleFilter = (filter) => {
@@ -181,7 +204,7 @@ export function BabyProvider({ children }) {
     <BabyContext.Provider value={{
       events, addEvent, updateEvent, deleteEvent, loading, allTimeStats, aiInsights,
       page, setPage, totalCount, PAGE_SIZE, filters, toggleFilter, dateFilter, setGotoDate,
-      lastFeed, metrics // Export the true last feed and metrics
+      lastFeed, metrics, restoreFromTrash, fetchDeletedEvents // Export the true last feed and metrics
     }}>
       {children}
     </BabyContext.Provider>
