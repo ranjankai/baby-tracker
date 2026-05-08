@@ -87,7 +87,7 @@ An AI-native, mobile-first baby tracker that transitions from a simple logger to
   - Table: `deleted_baby_events` with 10-item FIFO limit (via trigger).
   - UI: Bottom-sheet modal accessible via header icon (moved next to History).
   - Logic: `move_to_trash` and `restore_from_trash` RPCs.
-- [DONE] **08-05-2026**: Redeployed to Vercel (https://rskbm.vercel.app).
+- [DONE] **08-05-2026**: Redeployed edge functions (`generate-strip-insights`, `nudge-monitor`) with `--no-verify-jwt` to resolve 401 Unauthorized errors from internal `pg_cron` calls.
 
 ## 🐛 Open Bugs
 - None currently known.
