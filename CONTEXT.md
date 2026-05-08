@@ -21,6 +21,7 @@ An AI-native, mobile-first baby tracker that transitions from a simple logger to
 - **NPM**: `/Users/rkant/.nvm/versions/node/v20.20.2/bin/npm`
 - **NPX**: `/Users/rkant/.nvm/versions/node/v20.20.2/bin/npx`
 - **Supabase CLI**: `/Users/rkant/.npm/_npx/aa8e5c70f9d8d161/node_modules/supabase/bin/supabase`
+  - *Deployment Mandate*: Always use `--no-verify-jwt` for Edge Functions to support internal `pg_cron` triggers.
 - **Python**: `/usr/bin/python3`
 
 ## 🎛️ External Dashboard Configs (Manual)
@@ -58,6 +59,7 @@ An AI-native, mobile-first baby tracker that transitions from a simple logger to
 3. **Frontend Cache**: The Chatbox Scout (weather search) is cached per browser session to prevent redundant API calls.
 4. **Local Day Boundaries**: All date filters and "Today" counters MUST use local browser day boundaries (`new Date(y, m, d)`) converted to ISO strings, not raw UTC strings, to prevent regional time zone leaks.
 5. **Midnight Reset**: The universal daily reset for all app logic (feeds, diapers, medicines) is exactly **00:00 local time**.
+6. **Edge Function Security**: All Edge Functions MUST be deployed with the `--no-verify-jwt` flag. They are internal-only tools triggered by database crons that do not support auth headers.
 
 ## 🚧 Active Work / State
 - [DONE] Custom premium icon library and header UX overhaul implemented.
