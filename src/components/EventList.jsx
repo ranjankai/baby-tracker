@@ -1,78 +1,76 @@
 import { useState, useRef, useEffect } from 'react';
 import { useBaby } from './BabyContext';
-import { Milk, MessageCircle, Edit3, Trash2, ChevronLeft, ChevronRight, Calendar, History, FilterX, Pill, RotateCcw, X } from 'lucide-react';
+import { Milk, MessageCircle, Edit3, Trash2, ChevronLeft, ChevronRight, Calendar, History, FilterX, Pill, RotateCcw, X, GripVertical } from 'lucide-react';
 import { Diaper, TummyTime, SpitUp, TopFeed, Breastfeed } from './Icons';
 
-// ─── SwipeableRow ────────────────────────────────────────────────────────────
+// ─── SwipeableRow ──────────────────
 function SwipeableRow({ children, onDelete, onEdit, onNote }) {
   const startXRef    = useRef(0);
-  const dragged      = useRef(false); // true if pointer moved meaningfully
+  const dragged      = useRef(false);
   const isDraggingRef = useRef(false);
-  const [offsetX, setOffsetX] = useState(0); // live drag delta
-  const [snapX,   setSnapX]   = useState(0); // snapped resting position
+  const [offsetX, setOffsetX] = useState(0);
+  const [snapX,   setSnapX]   = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  const DRAG_THRESHOLD  = 8;   // px before we consider it a drag (not a click)
-  const SNAP_THRESHOLD  = 40;  // px to decide snapping open vs closed
-  const SNAP_LEFT       = -104; // snapped open left  (Note + Edit)
-  const SNAP_RIGHT      =  64;  // snapped open right (Delete)
+  const DRAG_THRESHOLD  = 8;
+  const SNAP_THRESHOLD  = 40;
+  const SNAP_LEFT       = -156; // 3 icons @ 52px each
 
-  const clamp = (v) => Math.max(-120, Math.min(120, v));
+  const clamp = (v) => Math.max(-180, Math.min(20, v));
   const close = () => { setSnapX(0); setOffsetX(0); };
 
-  // Combined current visual position
   const visualX = isDragging ? snapX + offsetX : snapX;
 
-  // ── Pointer start ──
-  const onStart = (clientX) => {
+  const onStart = (clientX, target) => {
+    const isHandle = target.closest('.drag-handle');
+    if (!isHandle && snapX === 0) return;
+
     startXRef.current = clientX;
     dragged.current = false;
     isDraggingRef.current = true;
     setIsDragging(true);
   };
 
-  // ── Pointer move ──
   const onMove = (clientX) => {
     if (!isDraggingRef.current) return;
-    const delta = clientX - startXRef.current;
-    if (Math.abs(delta) > DRAG_THRESHOLD) dragged.current = true;
-    setOffsetX(clamp(delta));
+    const dx = clientX - startXRef.current;
+    if (Math.abs(dx) > DRAG_THRESHOLD) dragged.current = true;
+    setOffsetX(clamp(dx));
   };
 
-  // ── Pointer end ──
   const onEnd = () => {
     if (!isDraggingRef.current) return;
     isDraggingRef.current = false;
     setIsDragging(false);
 
     if (!dragged.current) {
-      // Treat as a tap — close if open
       setSnapX(0);
       setOffsetX(0);
       return;
     }
 
     const total = snapX + offsetX;
-    // Decide snap
-    if (total < -SNAP_THRESHOLD)      setSnapX(SNAP_LEFT);
-    else if (total > SNAP_THRESHOLD)  setSnapX(SNAP_RIGHT);
-    else                               setSnapX(0);
+    if (snapX === 0) {
+      if (total < -SNAP_THRESHOLD) setSnapX(SNAP_LEFT);
+      else setSnapX(0);
+    } else {
+      if (total > SNAP_LEFT + SNAP_THRESHOLD) setSnapX(0);
+      else setSnapX(SNAP_LEFT);
+    }
     setOffsetX(0);
   };
 
   // Touch handlers
-  const handleTouchStart = (e) => onStart(e.touches[0].clientX);
+  const handleTouchStart = (e) => onStart(e.touches[0].clientX, e.target);
   const handleTouchMove  = (e) => onMove(e.touches[0].clientX);
   const handleTouchEnd   = ()  => onEnd();
 
   // Mouse handlers
-  const handleMouseDown  = (e) => onStart(e.clientX);
+  const handleMouseDown  = (e) => onStart(e.clientX, e.target);
   const handleMouseMove  = (e) => { if (isDraggingRef.current) onMove(e.clientX); };
   const handleMouseUp    = ()  => onEnd();
 
-  const revealed = -visualX;  // how much of left (Note+Edit) panel is visible
-  const rightRev =  visualX;  // how much of right (Delete) panel is visible
-
+  const revealed = -visualX;
   const transition = isDragging ? 'none' : 'transform 0.25s cubic-bezier(0.2,0.8,0.2,1)';
 
   return (
@@ -83,36 +81,40 @@ function SwipeableRow({ children, onDelete, onEdit, onNote }) {
     >
       {/* Foreground — rendered FIRST so action panels stack on top naturally */}
       <div
-        style={{ position: 'relative', background: 'var(--card-bg)', transform: `translateX(${visualX}px)`, transition }}
+        style={{ position: 'relative', background: 'var(--card-bg)', transform: `translateX(${visualX}px)`, transition, display: 'flex', alignItems: 'center' }}
         onClick={snapX !== 0 ? close : undefined}
       >
-        {children}
+        <div style={{ flex: 1 }}>{children}</div>
+        
+        {/* Visible Drag Handle */}
+        <div className="drag-handle" style={{ padding: '0 8px 0 12px', color: 'var(--text-muted)', opacity: 0.3, cursor: 'grab', display: 'flex', alignItems: 'center', height: '100%', minHeight: '44px' }}>
+          <GripVertical size={20} />
+        </div>
       </div>
 
-      {/* RIGHT-SWIPE: Delete (red) from the LEFT */}
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'stretch', pointerEvents: rightRev > 0 ? 'auto' : 'none' }}>
+      {/* Action Panel (Revealed from Right via Left-Swipe) */}
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'stretch', justifyContent: 'flex-end', pointerEvents: revealed > 0 ? 'auto' : 'none' }}>
+        {/* Delete */}
         <div
           onMouseDown={(e) => e.stopPropagation()}
           onMouseUp={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
           onTouchEnd={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); close(); onDelete(); }}
-          style={{ width: `${Math.max(0, rightRev)}px`, overflow: 'hidden', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: isDragging ? 'none' : 'width 0.25s' }}>
-          {rightRev > 20 && <Trash2 size={18} color="white" />}
+          style={{ width: `${Math.max(0, Math.min(revealed - 104, 52))}px`, overflow: 'hidden', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: isDragging ? 'none' : 'width 0.25s' }}>
+          {revealed > 120 && <Trash2 size={18} color="white" />}
         </div>
-      </div>
-
-      {/* LEFT-SWIPE: Note (violet) + Edit (purple) from the RIGHT */}
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'stretch', justifyContent: 'flex-end', pointerEvents: revealed > 0 ? 'auto' : 'none' }}>
+        {/* Edit */}
         <div
           onMouseDown={(e) => e.stopPropagation()}
           onMouseUp={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
           onTouchEnd={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); close(); onEdit(); }}
-          style={{ width: `${Math.max(0, Math.min(revealed - 20, 52))}px`, overflow: 'hidden', background: '#6d28d9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: isDragging ? 'none' : 'width 0.25s' }}>
-          {revealed > 40 && <Edit3 size={18} color="white" />}
+          style={{ width: `${Math.max(0, Math.min(revealed - 52, 52))}px`, overflow: 'hidden', background: '#6d28d9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: isDragging ? 'none' : 'width 0.25s' }}>
+          {revealed > 70 && <Edit3 size={18} color="white" />}
         </div>
+        {/* Note */}
         <div
           onMouseDown={(e) => e.stopPropagation()}
           onMouseUp={(e) => e.stopPropagation()}
@@ -505,6 +507,11 @@ export default function EventList() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: '13px', fontWeight: '600' }}>{getDetails(item)}</div>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{getSubtitle(item)}</div>
+                      {item.notes && item.notes.trim() && (
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '2px', lineHeight: 1.3 }}>
+                          "{item.notes}"
+                        </div>
+                      )}
                     </div>
                     <button
                       onClick={() => handleRestore(item.id)}
