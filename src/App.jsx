@@ -119,10 +119,16 @@ function App() {
         </header>
 
         <SummaryCards />
-        <InsightStrip />
-        <QuickLog />
-        <MedBox />
-        <EventList />
+        <div className="app-layout">
+          <div className="app-sidebar">
+            <InsightStrip />
+            <QuickLog />
+            <MedBox />
+          </div>
+          <div className="app-main">
+            <EventList />
+          </div>
+        </div>
 
         <footer style={{ marginTop: 'auto', padding: '24px 0', textAlign: 'center', opacity: 0.5, fontSize: '12px' }}>
           Built with ❤️ for new parents

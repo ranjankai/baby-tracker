@@ -486,7 +486,80 @@ input[type="datetime-local"].input-field {
   color: var(--primary);
 }
 
+/* Summary Cards */
+.summary-scroll-container {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.summary-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+.summary-card {
+  padding: 12px;
+  text-align: center;
+  min-width: calc(50vw - 24px);
+  width: calc(50vw - 24px);
+  flex: 0 0 auto;
+  border-radius: 16px;
+  box-sizing: border-box;
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
+}
+
+/* Desktop-only overrides */
+@media (min-width: 1024px) {
+  #root {
+    max-width: 1200px;
+  }
+  
+  .app-layout {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 40px;
+    align-items: start;
+  }
+
+  .app-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    position: sticky;
+    top: 24px;
+  }
+
+  .app-main {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  /* Summary Cards Desktop Overrides */
+  .summary-scroll-container {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    overflow-x: visible;
+  }
+  .summary-card {
+    min-width: 0;
+    width: 100%;
+  }
+  .scroll-hint {
+    display: none !important;
+  }
+}
+
+/* On mobile, use display: contents to pretend the wrappers don't exist */
+@media (max-width: 1023px) {
+  .app-layout, .app-sidebar, .app-main {
+    display: contents;
+  }
 }

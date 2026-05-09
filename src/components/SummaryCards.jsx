@@ -15,16 +15,6 @@ export default function SummaryCards() {
     spitUps24h: 0, spitUpsMajor: 0, spitUpsMinor: 0,
   };
 
-  const cardStyle = {
-    padding: '12px',
-    textAlign: 'center',
-    minWidth: 'calc(50vw - 24px)',
-    width: 'calc(50vw - 24px)',
-    flex: '0 0 auto',
-    borderRadius: '16px',
-    boxSizing: 'border-box',
-  };
-
   const pillStyle = {
     padding: '6px',
     marginBottom: '8px',
@@ -33,18 +23,11 @@ export default function SummaryCards() {
   };
 
   return (
-    <div style={{ position: 'relative' }}>
-      <div style={{
-        display: 'flex',
-        gap: '10px',
-        overflowX: 'auto',
-        paddingBottom: '6px',
-        scrollbarWidth: 'none',
-        WebkitOverflowScrolling: 'touch',
-      }}>
+    <div style={{ position: 'relative', marginBottom: '24px' }}>
+      <div className="summary-scroll-container">
 
       {/* Feed */}
-      <div className={`card ${m.lastFeedRaw !== null && m.lastFeedRaw > 3 ? 'glowing-alert' : ''}`} style={cardStyle}>
+      <div className={`card summary-card ${m.lastFeedRaw !== null && m.lastFeedRaw > 3 ? 'glowing-alert' : ''}`}>
         <div className="metric-pill lavender" style={pillStyle}>
           <Utensils size={14} /> Feed
         </div>
@@ -60,7 +43,7 @@ export default function SummaryCards() {
       </div>
 
       {/* Pee */}
-      <div className={`card ${m.lastPeeRaw !== null && m.lastPeeRaw > 4 ? 'glowing-alert' : ''}`} style={cardStyle}>
+      <div className={`card summary-card ${m.lastPeeRaw !== null && m.lastPeeRaw > 4 ? 'glowing-alert' : ''}`}>
         <div className="metric-pill mint" style={pillStyle}>
           <Droplets size={14} /> Pee
         </div>
@@ -76,7 +59,7 @@ export default function SummaryCards() {
       </div>
 
       {/* Spit-up */}
-      <div className="card" style={cardStyle}>
+      <div className="card summary-card">
         <div className="metric-pill amber" style={pillStyle}>
           <SpitUp size={14} /> Spit-up
         </div>
@@ -97,7 +80,7 @@ export default function SummaryCards() {
       </div>
 
       {/* Poop */}
-      <div className={`card ${m.lastPoopRaw !== null && m.lastPoopRaw > 24 ? 'glowing-alert' : ''}`} style={cardStyle}>
+      <div className={`card summary-card ${m.lastPoopRaw !== null && m.lastPoopRaw > 24 ? 'glowing-alert' : ''}`}>
         <div className="metric-pill amber" style={pillStyle}>
           <Wind size={14} /> Poop
         </div>
@@ -113,7 +96,7 @@ export default function SummaryCards() {
       </div>
 
       {/* Diaper Stats */}
-      <div className="card" style={cardStyle}>
+      <div className="card summary-card">
         <div className="metric-pill rose" style={pillStyle}>
           <Hash size={14} /> Diapers
         </div>
@@ -131,7 +114,7 @@ export default function SummaryCards() {
       </div>
 
       {/* Scroll hint — fades out after first interaction via CSS */}
-      <div style={{
+      <div className="scroll-hint" style={{
         position: 'absolute',
         right: 0,
         top: 0,
