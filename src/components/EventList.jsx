@@ -203,19 +203,51 @@ export default function EventList() {
 
   const getSubtitle = (event) => {
     const start = new Date(event.start_time);
-    const dateStr = start.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
-    const timeStr = start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    let s = `${dateStr} | ${timeStr}`;
+    const dateStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); // e.g. "May 10"
+    
+    // Custom Time formatting without AM/PM
+    let hours = start.getHours();
+    const minutes = start.getMinutes().toString().padStart(2, '0');
+    const isPM = hours >= 12;
+    if (hours > 12) hours -= 12;
+    if (hours === 0) hours = 12;
+    // Sunny yellow for AM, Indigo blue for PM
+    const timeColor = isPM ? '#4f46e5' : '#eab308';
+    
+    const timeElement = <span style={{ color: timeColor, fontWeight: 700 }}>{hours}:{minutes}</span>;
+
+    let feedDuration = null;
     if (isFeed(event.type)) {
       if (!event.end_time) {
-        s += ' | ⏱ Active';
+        feedDuration = <span style={{ color: 'var(--text-muted)' }}>| ⏱ Active</span>;
       } else {
-        const durationMs = (new Date(event.end_time) - start) - (event.total_paused_ms || 0);
+        const durationMs = Math.max(0, (new Date(event.end_time) - start) - (event.total_paused_ms || 0));
         const mins = Math.round(durationMs / 60000);
-        s += mins < 1 ? ` | ${Math.round(durationMs / 1000)}s` : ` | ${mins}m`;
+        const durationStr = mins < 1 ? `${Math.round(durationMs / 1000)}s` : `${mins}m`;
+        
+        if (event.total_paused_ms && event.total_paused_ms > 0) {
+          const pauseMins = Math.round(event.total_paused_ms / 60000);
+          const pauseStr = pauseMins < 1 ? `${Math.round(event.total_paused_ms / 1000)}s` : `${pauseMins}m`;
+          feedDuration = (
+            <>
+               | <span style={{ color: '#16a34a', fontWeight: 600 }}>{durationStr}</span> | <span style={{ color: '#d97706', fontWeight: 600 }}>{pauseStr}</span>
+            </>
+          );
+        } else {
+          feedDuration = (
+            <>
+              | <span style={{ color: '#16a34a', fontWeight: 600 }}>{durationStr}</span>
+            </>
+          );
+        }
       }
     }
-    return s;
+    
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+        <span>{dateStr}</span> {timeElement} {feedDuration}
+      </span>
+    );
   };
 
   const toLocalInput = (iso) =>
@@ -428,6 +460,15 @@ export default function EventList() {
                 <input type="datetime-local" className="input-field"
                   value={toLocalInput(editingEvent.end_time)}
                   onChange={(e) => setEditingEvent({ ...editingEvent, end_time: new Date(e.target.value).toISOString() })}
+                />
+                
+                <span className="intensity-label">Total Paused (minutes)</span>
+                <input type="number" className="input-field"
+                  value={editingEvent.total_paused_ms ? Math.round(editingEvent.total_paused_ms / 60000) : 0}
+                  onChange={(e) => {
+                    const mins = parseInt(e.target.value) || 0;
+                    setEditingEvent({ ...editingEvent, total_paused_ms: mins * 60000 });
+                  }}
                 />
                 {editingEvent.type === 'top' && (
                   <>
