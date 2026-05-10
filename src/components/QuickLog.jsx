@@ -170,13 +170,15 @@ export default function QuickLog() {
     if (!activeFeed) return;
     
     let totalPaused = activeFeed.total_paused_ms || 0;
+    let endTime = new Date().toISOString();
+
     if (activeFeed.is_paused) {
-      const finalPauseDuration = Date.now() - new Date(activeFeed.paused_at).getTime();
-      totalPaused += finalPauseDuration;
+      // If stopped while paused, the feed actually ended at the pause moment
+      endTime = activeFeed.paused_at;
     }
 
     updateEvent(activeFeed.id, { 
-      end_time: new Date().toISOString(),
+      end_time: endTime,
       is_paused: false,
       paused_at: null,
       total_paused_ms: totalPaused
@@ -206,9 +208,7 @@ export default function QuickLog() {
     let finalTimer = timer;
     let totalPaused = activeFeed.total_paused_ms || 0;
     if (activeFeed.is_paused) {
-      const finalPauseDuration = Date.now() - new Date(activeFeed.paused_at).getTime();
-      totalPaused += finalPauseDuration;
-      // Re-calculate timer for the modal display
+      // Re-calculate timer for the modal display based on when it was paused
       const start = new Date(activeFeed.start_time).getTime();
       finalTimer = Math.floor(((new Date(activeFeed.paused_at).getTime() - start) - (activeFeed.total_paused_ms || 0)) / 1000);
     }
@@ -232,13 +232,15 @@ export default function QuickLog() {
     // We need to re-find the activeFeed to get the latest pause data for the final DB write
     const entry = events.find(e => e.id === bottleStopId);
     let totalPaused = entry?.total_paused_ms || 0;
+    let endTime = new Date().toISOString();
+
     if (entry?.is_paused) {
-      const finalPauseDuration = Date.now() - new Date(entry.paused_at).getTime();
-      totalPaused += finalPauseDuration;
+      // If stopped while paused, end_time is the pause moment
+      endTime = entry.paused_at;
     }
 
     updateEvent(bottleStopId, {
-      end_time: new Date().toISOString(),
+      end_time: endTime,
       is_paused: false,
       paused_at: null,
       total_paused_ms: totalPaused,
