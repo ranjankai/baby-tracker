@@ -479,6 +479,21 @@ export default function EventList() {
                     />
                   </>
                 )}
+                {(editingEvent.type === 'mom_l' || editingEvent.type === 'mom_r') && (
+                  <>
+                    <span className="intensity-label">Breast Side</span>
+                    <div className="intensity-grid" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: '16px' }}>
+                      <button className={`intensity-button ${editingEvent.type === 'mom_l' ? 'active' : ''}`}
+                        onClick={() => setEditingEvent({ ...editingEvent, type: 'mom_l' })}>
+                        Left
+                      </button>
+                      <button className={`intensity-button ${editingEvent.type === 'mom_r' ? 'active' : ''}`}
+                        onClick={() => setEditingEvent({ ...editingEvent, type: 'mom_r' })}>
+                        Right
+                      </button>
+                    </div>
+                  </>
+                )}
               </>
             )}
 
