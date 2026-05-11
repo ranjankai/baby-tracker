@@ -118,7 +118,7 @@ function isTimeWindowDue(schedule, medEvents) {
 
 function archetypeLabel(s) {
   if (s.archetype === 'rotation')    return 'Alternating';
-  if (s.archetype === 'interval')    return `Every ${s.interval_hours}h`;
+  if (s.archetype === 'interval')    return s.interval_hours ? `Every ${s.interval_hours}h` : 'Daily Limit';
   if (s.archetype === 'time_window') return `${s.window_start}–${s.window_end}`;
   return '';
 }
@@ -251,7 +251,7 @@ function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedConfir
               </div>
               <div style={{ fontSize: '14px' }}><strong>Schedule:</strong> {
                 parsedConfirm.archetype === 'rotation'    ? 'Alternating (one per dose)' :
-                parsedConfirm.archetype === 'interval'    ? `Every ${parsedConfirm.interval_hours}h` :
+                parsedConfirm.archetype === 'interval'    ? (parsedConfirm.interval_hours ? `Every ${parsedConfirm.interval_hours}h` : 'Daily Limit') :
                 `${parsedConfirm.window_start}–${parsedConfirm.window_end} daily`
               }</div>
               {parsedConfirm.timing !== 'anytime' && (
