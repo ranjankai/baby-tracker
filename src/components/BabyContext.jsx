@@ -20,6 +20,7 @@ export function BabyProvider({ children }) {
   const [metrics, setMetrics] = useState(null); // The TRUE metrics for summary cards
   const [allTimeStats, setAllTimeStats] = useState({ totalDiapers: 0, firstEventTime: null });
   const [aiInsights, setAiInsights] = useState(null);
+  const [weightLogs, setWeightLogs] = useState([]);
 
   const stateRef = useRef({ page: 0, filters: [], dateFilter: null });
   useEffect(() => {
@@ -80,9 +81,10 @@ export function BabyProvider({ children }) {
           .order('start_time', { ascending: false })
           .limit(100);
 
-        const [diaperRes, firstRes] = await Promise.all([
+        const [diaperRes, firstRes, weightRes] = await Promise.all([
           supabase.from('baby_events').select('*', { count: 'exact', head: true }).eq('type', 'diaper').eq('is_diaper_free', false),
           supabase.from('baby_events').select('start_time').order('start_time', { ascending: true }).limit(1),
+          supabase.from('baby_events').select('*').eq('type', 'weight').order('start_time', { ascending: true }),
         ]);
         
         const stats = {
@@ -94,6 +96,9 @@ export function BabyProvider({ children }) {
           setMetrics(getMetrics(recentEvents, stats));
           const feed = recentEvents.find(e => ['top', 'mom_l', 'mom_r'].includes(e.type));
           if (feed) setLastFeed(feed);
+        }
+        if (weightRes.data) {
+          setWeightLogs(weightRes.data);
         }
         
         setAllTimeStats(stats);
@@ -204,7 +209,7 @@ export function BabyProvider({ children }) {
     <BabyContext.Provider value={{
       events, addEvent, updateEvent, deleteEvent, loading, allTimeStats, aiInsights,
       page, setPage, totalCount, PAGE_SIZE, filters, toggleFilter, dateFilter, setGotoDate,
-      lastFeed, metrics, restoreFromTrash, fetchDeletedEvents // Export the true last feed and metrics
+      lastFeed, metrics, restoreFromTrash, fetchDeletedEvents, weightLogs // Export the true last feed, metrics, and weights
     }}>
       {children}
     </BabyContext.Provider>

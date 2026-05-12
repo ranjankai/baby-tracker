@@ -7,6 +7,7 @@ import EventList from './components/EventList';
 import InsightStrip from './components/InsightStrip';
 import InsightBox from './components/InsightBox';
 import MedBox from './components/MedBox';
+import WeightBox from './components/WeightBox';
 import LoginScreen from './components/LoginScreen';
 import { LogOut, Sun, Moon, RefreshCw } from 'lucide-react';
 import './App.css';
@@ -124,6 +125,7 @@ function App() {
             <InsightStrip />
             <QuickLog />
             <MedBox />
+            <WeightBox />
           </div>
           <div className="app-main">
             <EventList />

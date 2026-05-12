@@ -5,7 +5,6 @@ import { SpitUp } from './Icons';
 
 export default function SummaryCards() {
   const { allTimeStats, aiInsights, metrics } = useBaby();
-  
   // Use pre-calculated metrics from context if available, otherwise show empty state
   const m = metrics || {
     lastFeed: '—', lastPee: '—', lastPoop: '—',

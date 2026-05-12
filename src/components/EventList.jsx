@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useBaby } from './BabyContext';
-import { Milk, MessageCircle, Edit3, Trash2, ChevronLeft, ChevronRight, Calendar, History, FilterX, Pill, RotateCcw, X, GripVertical } from 'lucide-react';
+import { Milk, MessageCircle, Edit3, Trash2, ChevronLeft, ChevronRight, Calendar, History, FilterX, Pill, RotateCcw, X, GripVertical, Scale } from 'lucide-react';
 import { Diaper, TummyTime, SpitUp, TopFeed, Breastfeed } from './Icons';
 
 // ─── SwipeableRow ──────────────────
@@ -136,7 +136,7 @@ export default function EventList() {
     page, setPage, totalCount, PAGE_SIZE,
     filters, toggleFilter, loading,
     dateFilter, setGotoDate, allTimeStats,
-    restoreFromTrash, fetchDeletedEvents,
+    restoreFromTrash, fetchDeletedEvents, weightLogs
   } = useBaby();
 
   const [editingEvent, setEditingEvent]     = useState(null);
@@ -178,6 +178,7 @@ export default function EventList() {
     if (type === 'diaper') return is_diaper_free ? <TummyTime size={16} /> : <Diaper size={16} />;
     if (type === 'spit_up') return <SpitUp size={16} />;
     if (type === 'medicine') return <Pill size={16} />;
+    if (type === 'weight') return <Scale size={16} />;
     return null;
   };
 
@@ -198,6 +199,10 @@ export default function EventList() {
       return `Spit-up (${intensity})`;
     }
     if (event.type === 'medicine') return 'Meds';
+    if (event.type === 'weight') {
+      const isFirst = weightLogs.length > 0 && weightLogs[0].id === event.id;
+      return `Weight${isFirst ? ' (Birth)' : ''} | ${event.weight_kg} kg`;
+    }
     return '';
   };
 
@@ -259,6 +264,7 @@ export default function EventList() {
     if (type === 'diaper')                    return { background: 'var(--secondary-light)', color: 'var(--secondary)' };
     if (type === 'spit_up')                   return { background: '#fef3c7',               color: '#b45309' };
     if (type === 'medicine')                  return { background: '#e0e7ff',               color: '#4338ca' };
+    if (type === 'weight')                    return { background: '#e0e7ff',               color: '#4338ca' }; // Indigo style for weight
     return { background: 'var(--primary-light)', color: 'var(--primary)' };
   };
 
@@ -291,6 +297,7 @@ export default function EventList() {
     { id: 'diaper',     label: 'Diaper' },
     { id: 'diaper_free',label: 'D Free' },
     { id: 'medicine',   label: 'Meds'   },
+    { id: 'weight',     label: 'Weight' },
   ];
 
   // ── render ────────────────────────────────────────────────────────────────
