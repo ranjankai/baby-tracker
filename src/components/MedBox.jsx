@@ -162,6 +162,11 @@ function MedRow({ s, dueMed, isDue, hoursUntil, medEvents, loggingMed, onTap }) 
               <span style={{ fontSize: '12px', color: 'var(--text-muted)', flexShrink: 0 }}>
                 ({n}{max ? `/${max}` : ''} today)
               </span>
+              {s.expires_at && (
+                <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 700, marginLeft: '4px', opacity: 0.8 }}>
+                  ⌛ {Math.ceil((new Date(s.expires_at) - Date.now()) / 86400000)}d left
+                </span>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
               {capped && (
@@ -209,6 +214,11 @@ function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedConfir
                   </div>
                   <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                     {archetypeLabel(s)}{s.timing !== 'anytime' ? ` · ${s.timing} feed` : ''}
+                    {s.expires_at && (
+                      <span style={{ color: '#b45309', fontWeight: 600 }}>
+                        {' '}· Expires {new Date(s.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <button onClick={() => onDelete(s.id)} style={{ background: '#fff1f1', border: 'none', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', fontSize: '12px', color: '#d32f2f', fontWeight: 600, fontFamily: 'var(--sans)', marginLeft: '8px' }}>
@@ -256,6 +266,11 @@ function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedConfir
               }</div>
               {parsedConfirm.timing !== 'anytime' && (
                 <div style={{ fontSize: '14px' }}><strong>Timing hint:</strong> {parsedConfirm.timing} feed</div>
+              )}
+              {parsedConfirm.duration_days && (
+                <div style={{ fontSize: '14px', color: '#b45309', fontWeight: 600 }}>
+                  <strong>Duration:</strong> {parsedConfirm.duration_days} days
+                </div>
               )}
             </div>
             <div className="grid-2">
@@ -311,7 +326,10 @@ export default function MedBox() {
     if (!supabase) return;
     try {
       const [sRes, eRes] = await Promise.all([
-        supabase.from('med_schedules').select('*').eq('is_active', true).order('created_at'),
+        supabase.from('med_schedules').select('*')
+          .eq('is_active', true)
+          .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+          .order('created_at'),
         supabase.from('baby_events').select('id,start_time,notes,type')
           .eq('type', 'medicine').order('start_time', { ascending: false }).limit(300),
       ]);
@@ -396,6 +414,7 @@ Output ONLY valid JSON:
   "window_start": null or "HH:MM",
   "window_end": null or "HH:MM",
   "timing": "before"|"after"|"with"|"anytime",
+  "duration_days": null or number,
   "confidence": "high"|"medium"|"low"
 }`;
       try {
@@ -421,6 +440,9 @@ Output ONLY valid JSON:
         window_start:   parsedConfirm.window_start   || null,
         window_end:     parsedConfirm.window_end     || null,
         timing:         parsedConfirm.timing         || 'anytime',
+        expires_at:     parsedConfirm.duration_days 
+          ? new Date(Date.now() + parsedConfirm.duration_days * 86400000).toISOString()
+          : null,
         nlp_input:      nlpInput,
       }]);
       if (error) {
