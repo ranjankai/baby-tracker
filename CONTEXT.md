@@ -9,7 +9,9 @@ An AI-native, mobile-first baby tracker that transitions from a simple logger to
 - **AI Core (Two-Phase Scout & Expert)**: 
   - **Phase 1 (Scout)**: `gemini-2.5-flash-lite` with Google Search fetches live environmental/weather context for Gurgaon.
   - **Phase 2 (Expert)**: The standard Gemini waterfall (3.1 Lite -> 3.0 -> 2.5) performs analysis using the Scout's context as plain text (no tools attached to conserve quota).
-- **Component Safety**: All high-complexity components (e.g. `MedBox`) must implement a silent-fail render guard (`try...catch` returning `null`) to ensure core app (Activity History) stability.
+- **Component Safety**: All high-complexity components (e.g. `MedBox`, `WeightBox`) must implement a silent-fail render guard (`try...catch` returning `null`) to ensure core app (Activity History) stability.
+- **Weight Tracking**: SVG sparklines map X-coordinates to raw timestamps to prevent rendering errors. 0.01kg precision enforced.
+- **Medicine Expiration**: AI-driven duration parsing sets `expires_at` column; dashboard auto-filters expired records.
 
 ## 🔑 API Key
 - **Active Key**: Managed via `.env.local` and Vercel/Supabase environment variables (Rotation: 03-05-2026).
@@ -89,10 +91,11 @@ An AI-native, mobile-first baby tracker that transitions from a simple logger to
   - Table: `deleted_baby_events` with 10-item FIFO limit (via trigger).
   - UI: Bottom-sheet modal accessible via header icon (moved next to History).
   - Logic: `move_to_trash` and `restore_from_trash` RPCs.
-- [DONE] **08-05-2026**: Redeployed edge functions (`generate-strip-insights`, `nudge-monitor`) with `--no-verify-jwt` to resolve 401 Unauthorized errors from internal `pg_cron` calls.
+- [DONE] **14-05-2026**: Implemented end-to-end weight tracking with growth trends and Sparkline visualization.
+- [DONE] **14-05-2026**: Implemented medicine expiration tracking with AI duration parsing and dashboard countdowns.
 
 ## 🐛 Open Bugs
 - None currently known.
 
 ---
-*Last Updated: 07-05-2026 (MedBox feature, midnight day reset)*
+*Last Updated: 14-05-2026 (Weight tracking, Medicine expiration)*
