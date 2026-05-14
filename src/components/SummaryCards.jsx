@@ -110,6 +110,19 @@ export default function SummaryCards() {
         )}
       </div>
 
+      {/* Weight */}
+      {m.latestWeight && (
+        <div className="card summary-card">
+          <div className="metric-pill lavender" style={pillStyle}>
+            <MousePointer2 size={14} style={{ transform: 'rotate(45deg)' }} /> Weight
+          </div>
+          <div style={{ fontSize: '15px', fontWeight: '700', marginBottom: '4px' }}>{m.latestWeight} kg</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500' }}>
+            {m.weightTrend > 0 ? `+${m.weightTrend}kg gain` : m.weightTrend < 0 ? `${m.weightTrend}kg loss` : 'Stable'}
+          </div>
+        </div>
+      )}
+
       </div>
 
       {/* Scroll hint — fades out after first interaction via CSS */}

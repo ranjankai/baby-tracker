@@ -537,6 +537,20 @@ export default function EventList() {
               </>
             )}
 
+            {editingEvent.type === 'weight' && (
+              <>
+                <span className="intensity-label">Weight (kg)</span>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  className="input-field"
+                  value={editingEvent.weight_kg || ''}
+                  onChange={(e) => setEditingEvent({ ...editingEvent, weight_kg: parseFloat(e.target.value) })}
+                  style={{ fontSize: '24px', padding: '12px', textAlign: 'center', fontWeight: 'bold' }}
+                />
+              </>
+            )}
+
             <div className="grid-2">
               <button className="button-primary" style={{ background: '#eee', color: '#666' }} onClick={() => setEditingEvent(null)}>Cancel</button>
               <button className="button-primary" onClick={handleSaveEdit}>Update</button>
