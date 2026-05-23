@@ -620,7 +620,7 @@ export default function MedBox() {
                         )}
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)', paddingLeft: '24px', display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        <span>({n}{cap ? `/${cap}${(cap > 1 || s.frequency_type === 'SOS') ? ' max' : ''}` : ''} today)</span>
+                        <span>({n}{cap ? `/${cap}${s.frequency_type === 'SOS' ? ' max' : ''}` : ''} today)</span>
                         {s.timing && s.timing !== 'anytime' ? <span>· {s.timing} feed</span> : null}
                         {s.preferred_times?.length ? <span>· {s.preferred_times.join(', ')}</span> : null}
                       </div>
