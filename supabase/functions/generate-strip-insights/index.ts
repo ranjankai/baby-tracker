@@ -56,7 +56,6 @@ Deno.serve(async (req) => {
 
     console.log("Conditions met. Fetching data for AI Analysis...");
 
-    // 3. Fetch recent events (Last 50) for analysis
     const { data: rawLogs } = await supabase
       .from('baby_events')
       .select('type, start_time, amount_ml, pee_amount, poop_amount, intensity, notes')
@@ -65,10 +64,29 @@ Deno.serve(async (req) => {
 
     const logs = rawLogs?.filter(e => !e.notes?.startsWith('SYSTEM_MSG')).slice(0, 50);
 
+    const { data: firstEventData } = await supabase
+      .from('baby_events')
+      .select('start_time')
+      .order('start_time', { ascending: true })
+      .limit(1);
+
+    let ageContext = "<3 month old";
+    if (firstEventData?.[0]) {
+      const birthDate = new Date(firstEventData[0].start_time);
+      const diffMs = Date.now() - birthDate.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const diffWeeks = Math.floor(diffDays / 7);
+      if (diffWeeks > 0) {
+        ageContext = `${diffWeeks} week old (approx ${diffDays} days)`;
+      } else {
+        ageContext = `${diffDays} day old`;
+      }
+    }
+
     // 4. Phase 1: The "Scout" (Dedicated Weather/Env Call)
     const LOCATION = "M3M Golf Estate, Sector 65, Gurgaon, India";
     const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' });
-    const scoutPrompt = `Today is ${today}. Return a 2-sentence summary of the CURRENT atmospheric and climate conditions TODAY which can affect a <3 month old baby girl's health in ${LOCATION}.`;
+    const scoutPrompt = `Today is ${today}. Return a 2-sentence summary of the CURRENT atmospheric and climate conditions TODAY which can affect a ${ageContext} baby girl's health in ${LOCATION}.`;
 
     
     let environmentContext = "No specific environmental data retrieved today.";
@@ -95,7 +113,7 @@ Deno.serve(async (req) => {
 
     // 5. Phase 2: The "Expert" (Main Analysis)
     const prompt = `
-      You are a world-class pediatric expert and your friends are first time parents of this newborn girl under discussion.
+      You are a world-class pediatric expert and your friends are first time parents of this ${ageContext} newborn girl under discussion.
       LOCATION of Parents: ${LOCATION}.
       CURRENT ENVIRONMENT: ${environmentContext}
 

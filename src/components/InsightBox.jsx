@@ -4,7 +4,7 @@ import { useBaby } from './BabyContext';
 import { askBabyTrackerQuestion } from '../utils/ai';
 
 export default function InsightBox() {
-  const { events } = useBaby();
+  const { events, allTimeStats } = useBaby();
   const [isOpen, setIsOpen] = useState(false);
   const [question, setQuestion] = useState('');
   const [conversation, setConversation] = useState([]);
@@ -20,8 +20,8 @@ export default function InsightBox() {
     setIsLoading(true);
 
     try {
-      // Pass the user's question and the full events array to our 2-pronged AI function
-      const answer = await askBabyTrackerQuestion(userMsg.content, events);
+      // Pass the user's question, full events array, and stats to our 2-pronged AI function
+      const answer = await askBabyTrackerQuestion(userMsg.content, events, allTimeStats);
       setConversation(prev => [...prev, { role: 'ai', content: answer }]);
     } catch (err) {
       console.error("Failed to get answer:", err);

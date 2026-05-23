@@ -75,11 +75,11 @@ export async function callDualTierAI(prompt, tier = "protocol", responseMimeType
 let cachedEnvironmentContext = null;
 const LOCATION = "M3M Golf Estate, Sector 65, Gurgaon, India";
 
-async function getEnvironmentContext() {
+async function getEnvironmentContext(ageContext = "<3 month old") {
   if (cachedEnvironmentContext) return cachedEnvironmentContext;
   
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' });
-  const scoutPrompt = `Today is ${today}. Return a 2-sentence summary of the CURRENT atmospheric and climate conditions TODAY which can affect a <3 month old baby girl's health in ${LOCATION}.`;
+  const scoutPrompt = `Today is ${today}. Return a 2-sentence summary of the CURRENT atmospheric and climate conditions TODAY which can affect a ${ageContext} baby girl's health in ${LOCATION}.`;
 
   const scoutWaterfall = [
     'gemini-3.1-flash-lite',
@@ -110,7 +110,20 @@ async function getEnvironmentContext() {
 /**
  * Chat Box Logic: Allows user to ask specific questions using Dual-Tier AI.
  */
-export async function askBabyTrackerQuestion(question, events) {
+export async function askBabyTrackerQuestion(question, events, allTimeStats) {
+  let ageContext = "<3 month old";
+  if (allTimeStats?.firstEventTime) {
+    const birthDate = new Date(allTimeStats.firstEventTime);
+    const diffMs = Date.now() - birthDate.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffWeeks = Math.floor(diffDays / 7);
+    if (diffWeeks > 0) {
+      ageContext = `${diffWeeks} week old (approx ${diffDays} days)`;
+    } else {
+      ageContext = `${diffDays} day old`;
+    }
+  }
+
   // Phase 1: Protocol Tier (Gemma) - Data Triage
   const protocolPrompt = `
     You are a data extraction rule generator for a baby tracking app.
@@ -145,10 +158,10 @@ export async function askBabyTrackerQuestion(question, events) {
   }
 
   // Phase 2: Insight Tier (Gemini) - Final Answer
-  const envContext = await getEnvironmentContext();
+  const envContext = await getEnvironmentContext(ageContext);
 
   const insightPrompt = `
-    You are a world-class pediatric expert and your friends are first time parents of this newborn girl under discussion.
+    You are a world-class pediatric expert and your friends are first time parents of this ${ageContext} newborn girl under discussion.
     LOCATION of Parents: ${LOCATION}.
     CURRENT ENVIRONMENT: ${envContext}
 
