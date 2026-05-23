@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useBaby } from './BabyContext';
-import { Milk, MessageCircle, Edit3, Trash2, ChevronLeft, ChevronRight, Calendar, History, FilterX, Pill, RotateCcw, X, GripVertical, Scale } from 'lucide-react';
+import { Milk, MessageCircle, Edit3, Trash2, ChevronLeft, ChevronRight, Calendar, History, FilterX, Pill, RotateCcw, X, GripVertical, Scale, Sparkles } from 'lucide-react';
 import { Diaper, TummyTime, SpitUp, TopFeed, Breastfeed } from './Icons';
+import { generateFilteredSummary } from '../utils/ai';
 
 // ─── SwipeableRow ──────────────────
 function SwipeableRow({ children, onDelete, onEdit, onNote }) {
@@ -145,6 +146,8 @@ export default function EventList() {
   const [windowStart, setWindowStart]       = useState(0);
   const [showBin, setShowBin]               = useState(false);
   const [deletedItems, setDeletedItems]     = useState([]);
+  const [filteredSummary, setFilteredSummary] = useState(null);
+  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
 
   const WINDOW_SIZE = 5;
   const totalPages = Math.max(1, Math.ceil(totalCount / (PAGE_SIZE || 50)));
@@ -155,6 +158,11 @@ export default function EventList() {
       fetchDeletedEvents().then(setDeletedItems);
     }
   }, [showBin]); // eslint-disable-line
+
+  // Clear AI summary when filters change
+  useEffect(() => {
+    setFilteredSummary(null);
+  }, [filters, dateFilter]);
 
   // ── helpers ─────────────────────────────────────────────────────────────
   const getLocalDate = () => {
@@ -288,6 +296,13 @@ export default function EventList() {
   const clearAllFilters = () => {
     FILTER_OPTIONS.forEach(opt => { if (filters.includes(opt.id)) toggleFilter(opt.id); });
     setGotoDate(null);
+  };
+
+  const handleGenerateSummary = async () => {
+    setIsSummaryLoading(true);
+    const result = await generateFilteredSummary(events, allTimeStats);
+    setFilteredSummary(result);
+    setIsSummaryLoading(false);
   };
 
   const FILTER_OPTIONS = [
@@ -447,6 +462,34 @@ export default function EventList() {
             <button className="icon-action-btn" disabled={windowStart + WINDOW_SIZE >= totalPages} onClick={() => setWindowStart(Math.min(totalPages - WINDOW_SIZE, windowStart + WINDOW_SIZE))} style={{ opacity: windowStart + WINDOW_SIZE >= totalPages ? 0.2 : 1 }}>
               <ChevronRight size={18} />
             </button>
+          </div>
+        )}
+
+        {/* Filtered AI Summary */}
+        {(filters.length > 0 || dateFilter) && events.length > 0 && (
+          <div style={{ marginTop: '20px', padding: '16px', background: 'linear-gradient(135deg, rgba(167, 139, 250, 0.05), rgba(244, 114, 182, 0.05))', borderRadius: '16px', border: '1px solid rgba(167, 139, 250, 0.2)' }}>
+            {!filteredSummary && !isSummaryLoading ? (
+              <button 
+                onClick={handleGenerateSummary}
+                style={{ width: '100%', background: 'transparent', border: '1px dashed var(--primary)', color: 'var(--primary)', padding: '12px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s' }}
+              >
+                <Sparkles size={18} /> Summarize logs
+              </button>
+            ) : isSummaryLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px', color: 'var(--primary)' }}>
+                <Sparkles size={18} className="animate-spin" /> Analyzing logs...
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <Sparkles size={14} /> Numeric Analysis
+                </div>
+                <div style={{ fontSize: '14px', color: 'var(--text-main)', lineHeight: 1.5 }}>
+                  <div style={{ fontWeight: 600, marginBottom: '6px' }}>{filteredSummary.summary}</div>
+                  <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '13px' }}>{filteredSummary.insight}</div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

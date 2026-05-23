@@ -182,3 +182,49 @@ export async function askBabyTrackerQuestion(question, events, allTimeStats) {
     return "Sorry, the expert API call did not work.";
   }
 }
+
+/**
+ * Filtered Log Summarizer: Generates 2-line numerical insight for filtered logs.
+ */
+export async function generateFilteredSummary(events, allTimeStats) {
+  let ageContext = "<3 month old";
+  if (allTimeStats?.firstEventTime) {
+    const birthDate = new Date(allTimeStats.firstEventTime);
+    const diffMs = Date.now() - birthDate.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffWeeks = Math.floor(diffDays / 7);
+    if (diffWeeks > 0) {
+      ageContext = `${diffWeeks} week old (approx ${diffDays} days)`;
+    } else {
+      ageContext = `${diffDays} day old`;
+    }
+  }
+
+  const prompt = `You are a pediatric data analyst.
+The parents have filtered their baby's logs to a specific subset.
+Baby Age: ${ageContext}.
+
+TASK: Analyze these logs and provide a 2-line JSON response.
+Line 1 ("summary"): A pure numerical summary of the logs.
+Line 2 ("insight"): An ultra-cool, mind-blowing numeric insight or hidden correlation found in this specific data.
+
+RULES:
+- Focus strictly on numerical insights (e.g., percentages, averages, time distributions).
+- Be incredibly concise—one sentence per field.
+- Do NOT provide general pediatric advice, just deep data analysis.
+- Output ONLY valid JSON with keys "summary" and "insight".
+
+Logs: ${JSON.stringify(events.slice(0, 150))}
+  `;
+
+  try {
+    const resultJson = await callDualTierAI(prompt, "insight", "application/json");
+    return JSON.parse(cleanJson(resultJson));
+  } catch (err) {
+    console.error("Filtered Summary Error:", err);
+    return {
+      summary: "Could not generate summary at this time.",
+      insight: "Please try again later or adjust your filters."
+    };
+  }
+}
