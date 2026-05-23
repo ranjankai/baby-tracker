@@ -166,7 +166,7 @@ function archetypeLabel(s) {
     return s.specific_days.map(d => DAY_NAMES[d] || d).join(', ');
   if (s.archetype === 'rotation')    return 'Alternating';
   if (s.archetype === 'interval')    return s.interval_hours ? `Every ${s.interval_hours}h` : 'Daily';
-  if (s.archetype === 'time_window') return `${s.window_start}–${s.window_end}`;
+  if (s.archetype === 'time_window') return (s.window_start && s.window_end) ? `${s.window_start}–${s.window_end}` : 'Daily';
   return 'Daily';
 }
 
