@@ -222,7 +222,7 @@ Logs: ${JSON.stringify(events.slice(0, 150))}
   `;
 
   try {
-    const resultJson = await callDualTierAI(prompt, "insight", "application/json");
+    const resultJson = await callDualTierAI(prompt, "insight", "text/plain");
     try {
       return JSON.parse(cleanJson(resultJson));
     } catch (parseError) {
