@@ -49,9 +49,11 @@ export function BabyProvider({ children }) {
 
     if (targetFilters.length > 0) {
       const orParts = [];
-      const types = targetFilters.filter(f => f !== 'diaper_free');
+      const types = targetFilters.filter(f => !['diaper_free', 'pee', 'poop'].includes(f));
       if (types.length > 0) orParts.push(`type.in.(${types.join(',')})`);
       if (targetFilters.includes('diaper_free')) orParts.push('is_diaper_free.eq.true');
+      if (targetFilters.includes('pee')) orParts.push('pee_amount.in.(light,heavy)');
+      if (targetFilters.includes('poop')) orParts.push('poop_amount.in.(light,heavy)');
       query = query.or(orParts.join(','));
     }
 

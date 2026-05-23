@@ -295,6 +295,8 @@ export default function EventList() {
     { id: 'mom_r',      label: 'Mom R'  },
     { id: 'top',        label: 'Top'    },
     { id: 'diaper',     label: 'Diaper' },
+    { id: 'pee',        label: 'Pee'    },
+    { id: 'poop',       label: 'Poop'   },
     { id: 'diaper_free',label: 'D Free' },
     { id: 'medicine',   label: 'Meds'   },
     { id: 'weight',     label: 'Weight' },
