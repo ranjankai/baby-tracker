@@ -204,22 +204,31 @@ export async function generateFilteredSummary(events, allTimeStats) {
 The parents have filtered their baby's logs to a specific subset.
 Baby Age: ${ageContext}.
 
-TASK: Analyze these logs and provide a 2-line JSON response.
-Line 1 ("summary"): A pure numerical summary of the logs.
-Line 2 ("insight"): An ultra-cool, mind-blowing numeric insight or hidden correlation found in this specific data.
+TASK: Analyze these logs and provide numerical insights.
 
 RULES:
 - Focus strictly on numerical insights (e.g., percentages, averages, time distributions).
 - Be incredibly concise—one sentence per field.
 - Do NOT provide general pediatric advice, just deep data analysis.
-- Output ONLY valid JSON with keys "summary" and "insight".
+- You MUST return ONLY a raw JSON object matching the exact structure below.
+
+REQUIRED JSON FORMAT:
+{
+  "summary": "A pure numerical summary of the logs.",
+  "insight": "An ultra-cool, mind-blowing numeric insight or hidden correlation found in this specific data."
+}
 
 Logs: ${JSON.stringify(events.slice(0, 150))}
   `;
 
   try {
     const resultJson = await callDualTierAI(prompt, "insight", "application/json");
-    return JSON.parse(cleanJson(resultJson));
+    try {
+      return JSON.parse(cleanJson(resultJson));
+    } catch (parseError) {
+      console.error("JSON Parse Error. Raw response:", resultJson);
+      throw parseError;
+    }
   } catch (err) {
     console.error("Filtered Summary Error:", err);
     return {
