@@ -215,91 +215,7 @@ function TaperBadge({ s }) {
   );
 }
 
-function MedRow({ s, dueMed, isDue, hoursUntil, medEvents, loggingMed, onTap }) {
-  if (!s || !s.medicines) return null;
-  return (
-    <div style={{ marginBottom: '8px' }}>
-      <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600,
-        textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
-        {archetypeLabel(s)}{s.timing && s.timing !== 'anytime' ? ` · ${s.timing} feed` : ''}
-        {s.preferred_times?.length ? ` · ${s.preferred_times.join(', ')}` : ''}
-      </div>
-      {s.medicines.map(m => {
-        const name     = medName(m);
-        const n        = count24h(name, medEvents);
-        const cap      = s.max_doses_per_24h;
-        const capped   = cap != null && n >= cap;
-        const gapLeft  = s.frequency_type === 'SOS'
-          ? hoursUntilMinGap(name, medEvents, s.min_hours_between_doses)
-          : null;
-        const gapBlock = gapLeft != null && gapLeft > 0;
-        const disabled = capped || gapBlock;
-        const isThisDue = isDue && name && name.toLowerCase() === dueMed?.toLowerCase();
-        const isLogging = loggingMed === name;
-
-        return (
-          <button key={name || Math.random()}
-            onClick={() => onTap(s, name, dueMed)}
-            disabled={isLogging || disabled}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              width: '100%',
-              background: disabled ? 'var(--bg-app)' : isThisDue ? 'var(--primary-light)' : 'var(--bg-app)',
-              border: `1.5px solid ${isThisDue && !disabled ? 'var(--primary)' : 'var(--border-soft)'}`,
-              borderRadius: '12px', padding: '10px 14px',
-              cursor: disabled ? 'not-allowed' : 'pointer',
-              marginBottom: '6px', fontFamily: 'var(--sans)', transition: 'all 0.2s',
-              opacity: disabled ? 0.5 : 1,
-              animation: isThisDue && !disabled ? 'pulse-suggestion 3s cubic-bezier(0.4,0,0.6,1) infinite' : 'none',
-            }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-              <span style={{ fontSize: '16px' }}>💊</span>
-              <span style={{ fontWeight: 600, fontSize: '14px',
-                color: isThisDue && !disabled ? 'var(--primary)' : 'var(--text-main)' }}>
-                {name}
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)', flexShrink: 0 }}>
-                ({n}{cap ? `/${cap}` : ''} today)
-              </span>
-              {s.is_tapering_regimen && <TaperBadge s={s} />}
-              {s.expires_at && (
-                <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 700, marginLeft: '4px', opacity: 0.8 }}>
-                  ⌛ {Math.ceil((new Date(s.expires_at) - Date.now()) / 86_400_000)}d left
-                </span>
-              )}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-              {capped && (
-                <span style={{ fontSize: '11px', fontWeight: 700, color: '#b45309',
-                  background: '#fef3c7', borderRadius: '99px', padding: '2px 8px' }}>MAX</span>
-              )}
-              {gapBlock && !capped && (
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  in {gapLeft.toFixed(1)}h
-                </span>
-              )}
-              {isThisDue && !disabled && (
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)',
-                  background: 'var(--primary-light)', borderRadius: '99px', padding: '2px 8px' }}>DUE</span>
-              )}
-              {s.frequency_type === 'SOS' && !disabled && (
-                <span style={{ fontSize: '11px', fontWeight: 700, color: '#0284c7',
-                  background: '#e0f2fe', borderRadius: '99px', padding: '2px 8px' }}>SOS</span>
-              )}
-              {!isDue && s.archetype === 'interval' && hoursUntil != null && !disabled && (
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>in {hoursUntil.toFixed(1)}h</span>
-              )}
-              {isLogging
-                ? <Loader size={14} style={{ color: 'var(--primary)', animation: 'spin 1s linear infinite' }} />
-                : <span style={{ fontSize: '16px', opacity: 0.4 }}>○</span>
-              }
-            </div>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+// MedRow removed to group properly in the main render loop.
 
 function ConfirmPreview({ p, nlpInput, onEdit, onConfirm }) {
   const taperSteps = p.taper_steps;
@@ -512,9 +428,9 @@ export default function MedBox() {
     const dues = schedules.map(s => {
       if (s.frequency_type === 'SOS') {
         const name = medName(s.medicines?.[0]);
-        const isDue = isSOSDue(s, name, medEvents);
+        // SOS is never "due", just available
         const gapLeft = hoursUntilMinGap(name, medEvents, s.min_hours_between_doses);
-        return { s, dueMed: name, isDue, hoursUntil: gapLeft };
+        return { s, dueMed: null, isDue: false, hoursUntil: gapLeft };
       }
       if (s.frequency_type === 'SPECIFIC_DAYS') {
         const name = medName(s.medicines?.[0]);
@@ -647,9 +563,95 @@ export default function MedBox() {
           </div>
         </div>
 
-        {(anyDue || isExpanded) && dues.map(({ s, dueMed, isDue, hoursUntil }) => (
-          <MedRow key={s.id} s={s} dueMed={dueMed} isDue={isDue} hoursUntil={hoursUntil}
-            medEvents={medEvents} loggingMed={loggingMed} onTap={handleMedTap} />
+        {(anyDue || isExpanded) && Object.entries(
+          dues.reduce((acc, d) => {
+            const label = archetypeLabel(d.s);
+            if (!acc[label]) acc[label] = [];
+            acc[label].push(d);
+            return acc;
+          }, {})
+        ).map(([label, groupDues]) => (
+          <div key={label} style={{ marginBottom: '16px' }}>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600,
+              textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '4px' }}>
+              {label}
+            </div>
+            {groupDues.map(({ s, dueMed, isDue, hoursUntil }) => (
+              (s.medicines || []).map(m => {
+                const name     = medName(m);
+                const n        = count24h(name, medEvents);
+                const cap      = s.max_doses_per_24h;
+                const capped   = cap != null && n >= cap;
+                const gapLeft  = s.frequency_type === 'SOS'
+                  ? hoursUntilMinGap(name, medEvents, s.min_hours_between_doses)
+                  : null;
+                const gapBlock = gapLeft != null && gapLeft > 0;
+                const disabled = capped || gapBlock;
+                const isThisDue = isDue && name && name.toLowerCase() === dueMed?.toLowerCase();
+                const isLogging = loggingMed === name;
+
+                return (
+                  <button key={s.id + '-' + (name || Math.random())}
+                    onClick={() => handleMedTap(s, name, dueMed)}
+                    disabled={isLogging || disabled}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      width: '100%',
+                      background: disabled ? 'var(--bg-app)' : isThisDue ? 'var(--primary-light)' : 'var(--bg-app)',
+                      border: `1.5px solid ${isThisDue && !disabled ? 'var(--primary)' : 'var(--border-soft)'}`,
+                      borderRadius: '12px', padding: '10px 14px',
+                      cursor: disabled ? 'not-allowed' : 'pointer',
+                      marginBottom: '6px', fontFamily: 'var(--sans)', transition: 'all 0.2s',
+                      opacity: disabled ? 0.5 : 1,
+                      animation: isThisDue && !disabled ? 'pulse-suggestion 3s cubic-bezier(0.4,0,0.6,1) infinite' : 'none',
+                    }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px', minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '16px' }}>💊</span>
+                        <span style={{ fontWeight: 600, fontSize: '14px',
+                          color: isThisDue && !disabled ? 'var(--primary)' : 'var(--text-main)' }}>
+                          {name}
+                        </span>
+                        {s.is_tapering_regimen && <TaperBadge s={s} />}
+                        {s.expires_at && (
+                          <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 700, marginLeft: '4px', opacity: 0.8 }}>
+                            ⌛ {Math.ceil((new Date(s.expires_at) - Date.now()) / 86_400_000)}d left
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', paddingLeft: '24px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <span>({n}{cap ? `/${cap} max` : ''} today)</span>
+                        {s.timing && s.timing !== 'anytime' ? <span>· {s.timing} feed</span> : null}
+                        {s.preferred_times?.length ? <span>· {s.preferred_times.join(', ')}</span> : null}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                      {capped && (
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#b45309',
+                          background: '#fef3c7', borderRadius: '99px', padding: '2px 8px' }}>MAX REACHED</span>
+                      )}
+                      {gapBlock && !capped && (
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                          wait {gapLeft.toFixed(1)}h
+                        </span>
+                      )}
+                      {isThisDue && !disabled && (
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)',
+                          background: 'var(--primary-light)', borderRadius: '99px', padding: '2px 8px' }}>DUE</span>
+                      )}
+                      {!isDue && s.archetype === 'interval' && hoursUntil != null && !disabled && (
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>due in {hoursUntil.toFixed(1)}h</span>
+                      )}
+                      {isLogging
+                        ? <Loader size={14} style={{ color: 'var(--primary)', animation: 'spin 1s linear infinite' }} />
+                        : <span style={{ fontSize: '16px', opacity: 0.4 }}>○</span>
+                      }
+                    </div>
+                  </button>
+                );
+              })
+            ))}
+          </div>
         ))}
 
         {showConfig && (
