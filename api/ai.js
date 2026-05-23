@@ -1,20 +1,26 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Uses the secure GEMINI_API_KEY from Vercel's backend environment
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
+  try {
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'Method Not Allowed' });
+    }
 
-  const { prompt, tier = "protocol", responseMimeType = "text/plain" } = req.body;
+    const { prompt, tier = "protocol", responseMimeType = "text/plain" } = req.body;
 
-  if (!prompt) {
-    return res.status(400).json({ error: 'Prompt is required' });
-  }
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
 
-  const chains = {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.error("CRITICAL: GEMINI_API_KEY is undefined on Vercel backend!");
+      return res.status(500).json({ error: 'GEMINI_API_KEY is missing on Vercel backend' });
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+
+    const chains = {
     // INSIGHT TIER: Deep analysis, pattern recognition, long-context summaries
     "insight": [
       'gemini-3.5-flash',
@@ -66,4 +72,8 @@ export default async function handler(req, res) {
     error: 'All models in the waterfall failed.', 
     details: lastError?.message || "Unknown error" 
   });
+  } catch (globalError) {
+    console.error("Global API Route Error:", globalError);
+    return res.status(500).json({ error: 'Internal Server Error', details: globalError.message });
+  }
 }

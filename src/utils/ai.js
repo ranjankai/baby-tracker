@@ -15,10 +15,15 @@ export async function callDualTierAI(prompt, tier = "protocol", responseMimeType
       body: JSON.stringify({ prompt, tier, responseMimeType })
     });
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      throw new Error(`Vercel API returned ${response.status} without JSON.`);
+    }
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to call AI API');
+      throw new Error(`Vercel API [${response.status}]: ${data.error || 'Failed to call AI API'} - ${data.details || ''}`);
     }
 
     return data.text;
