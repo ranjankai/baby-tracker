@@ -123,14 +123,21 @@ function intervalHoursUntil(s, medEvents) {
 }
 
 function isTimeWindowDue(s, medEvents) {
-  if (!s?.window_start || !s.window_end) return false;
   const now = new Date();
-  const cur = now.getHours() * 60 + now.getMinutes();
-  const [sH, sM] = s.window_start.split(':').map(Number);
-  const [eH, eM] = s.window_end.split(':').map(Number);
-  if (cur < sH * 60 + sM || cur > eH * 60 + eM) return false;
-  const winStart = new Date(now); winStart.setHours(sH, sM, 0, 0);
-  const winEnd   = new Date(now); winEnd.setHours(eH, eM, 0, 0);
+  let winStart, winEnd;
+
+  if (!s?.window_start || !s.window_end) {
+    winStart = new Date(now); winStart.setHours(0, 0, 0, 0);
+    winEnd = new Date(now); winEnd.setHours(23, 59, 59, 999);
+  } else {
+    const cur = now.getHours() * 60 + now.getMinutes();
+    const [sH, sM] = s.window_start.split(':').map(Number);
+    const [eH, eM] = s.window_end.split(':').map(Number);
+    if (cur < sH * 60 + sM || cur > eH * 60 + eM) return false;
+    winStart = new Date(now); winStart.setHours(sH, sM, 0, 0);
+    winEnd   = new Date(now); winEnd.setHours(eH, eM, 0, 0);
+  }
+
   return !(medEvents || []).some(e =>
     s.medicines.some(m => medName(m).toLowerCase() === e.notes?.toLowerCase()) &&
     new Date(e.start_time) >= winStart && new Date(e.start_time) <= winEnd
