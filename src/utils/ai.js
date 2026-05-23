@@ -1,75 +1,31 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-
-// Global API Key (Supports Gemini 2.x/3.x and Gemma 4)
-const GLOBAL_GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(GLOBAL_GEMINI_API_KEY);
-
+// Clean JSON regex helper
 const cleanJson = (text) => {
   const match = text.match(/\{[\s\S]*\}/);
   return match ? match[0] : text.replace(/```json|```/g, "").trim();
 };
 
 /**
- * Dual-Tier Waterfall for Gemini (Insight) and Gemma (Protocol) calls.
+ * Dual-Tier AI Router: Calls the Vercel Serverless Function securely.
  */
 export async function callDualTierAI(prompt, tier = "protocol", responseMimeType = "text/plain") {
-  const chains = {
-    // INSIGHT TIER: Deep analysis, pattern recognition, long-context summaries
-    "insight": [
-      'gemini-3.5-flash',
-      'gemini-3.1-flash-lite',
-      'gemini-3-flash-preview',
-      'gemini-2.5-flash',
-      'gemini-2.5-flash-lite'
-    ],
-    // PROTOCOL TIER: Fast logic, decision trees, workflow orchestration
-    "protocol": [
-      'gemma-4-31b-it',
-      'gemma-4-26b-a4b-it'
-    ]
-  };
+  try {
+    const response = await fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, tier, responseMimeType })
+    });
 
-  const waterfall = chains[tier] || chains["protocol"];
-  let lastError = null;
-
-  for (const modelName of waterfall) {
-    try {
-      console.log(`AI Tier [${tier}]: Attempting ${modelName}...`);
-      const modelConfig = { 
-        model: modelName,
-        generationConfig: { responseMimeType },
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-        ]
-      };
-
-      // We no longer attach tools here. The Scout phase handles search separately.
-      const model = genAI.getGenerativeModel(modelConfig);
-
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-
-      if (!response.candidates || response.candidates.length === 0) {
-        throw new Error(`Safety filter blocked the response for ${modelName}`);
-      }
-
-      console.log(`AI Tier [${tier}]: Success with ${modelName}`);
-      return response.text();
-    } catch (error) {
-      console.error(`AI Tier [${tier}]: ${modelName} failed | Status: ${error.status} | Error: ${error.message}`);
-      lastError = error;
-      // Only abort the entire chain on API key errors. 
-      // Safety-filter 400s from individual models should fall through to the next model.
-      if (error.message && error.message.toLowerCase().includes('api key')) {
-        break;
-      }
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to call AI API');
     }
-  }
 
-  throw lastError || new Error(`All models in [${tier}] tier failed.`);
+    return data.text;
+  } catch (error) {
+    console.error("Vercel API Route failed:", error);
+    throw error;
+  }
 }
 
 let cachedEnvironmentContext = null;
