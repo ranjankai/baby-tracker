@@ -7,15 +7,15 @@ An AI-native, mobile-first baby tracker that transitions from a simple logger to
 - **Backend**: Supabase (PostgreSQL + Edge Functions).
 - **Frontend**: React (Vite-based) with a **"Dumb Frontend"** principle.
 - **AI Core (Two-Phase Scout & Expert)**: 
-  - **Phase 1 (Scout)**: `gemini-2.5-flash-lite` with Google Search fetches live environmental/weather context for Gurgaon.
-  - **Phase 2 (Expert)**: The standard Gemini waterfall (3.1 Lite -> 3.0 -> 2.5) performs analysis using the Scout's context as plain text (no tools attached to conserve quota).
+  - **Phase 1 (Scout)**: Resilient waterfall (`gemini-3.1-flash-lite` -> `gemini-2.5-flash-lite`) with Google Search fetches live environmental/weather context for Gurgaon.
+  - **Phase 2 (Expert)**: The standard Gemini waterfall (3.5 Flash -> 3.1 Lite -> 3.0 -> 2.5 -> 2.5 Lite) performs analysis using the Scout's context as plain text (no tools attached to conserve quota).
 - **Component Safety**: All high-complexity components (e.g. `MedBox`, `WeightBox`) must implement a silent-fail render guard (`try...catch` returning `null`) to ensure core app (Activity History) stability.
 - **Weight Tracking**: SVG sparklines map X-coordinates to raw timestamps to prevent rendering errors. 0.01kg precision enforced.
 - **Medicine Expiration**: AI-driven duration parsing sets `expires_at` column; dashboard auto-filters expired records.
 
 ## 🔑 API Key
 - **Active Key**: Managed via `.env.local` and Vercel/Supabase environment variables (Rotation: 03-05-2026).
-- **Key Scope**: Verified live on `gemini-3-flash-preview`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemma-4-26b-a4b-it`. Note: `gemini-3.1-flash-lite-preview` (503) and `gemma-4-31b-it` (500) are intermittently unavailable — waterfall handles gracefully.
+- **Key Scope**: Verified live on `gemini-3-flash-preview`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemma-4-26b-a4b-it`. Note: `gemini-3.1-flash-lite` (503) and `gemma-4-31b-it` (500) are intermittently unavailable — waterfall handles gracefully.
 - **Key Location**: Frontend: hardcoded in `src/utils/ai.js`. Edge functions: single source of truth at `supabase/functions/_shared/config.ts` (imported by both functions at deploy time).
 
 ## 🛠️ Infrastructure & Toolchain (Verified 03-05-2026)
@@ -73,6 +73,9 @@ An AI-native, mobile-first baby tracker that transitions from a simple logger to
 - [DONE] **29-04-2026**: Injected current date (IST, `en-IN` format) into Scout prompt across all three AI surfaces (chatbox, insight strip, nudge monitor) to prevent stale/seasonal climate advice.
 - [DONE] **03-05-2026**: Global API key rotated across all source files, edge functions, and protocol documentation.
 - [DONE] **03-05-2026**: Centralized edge function Gemini key to `supabase/functions/_shared/config.ts` and migrated frontend to use `import.meta.env.VITE_GEMINI_API_KEY`. Key rotation is now a single-point update for edge functions and an env-var update for the frontend.
+- [DONE] **20-05-2026**: Prepend `gemini-3.5-flash` to the Insight waterfall sequence across frontend (`src/utils/ai.js`) and both edge functions (`generate-strip-insights` and `nudge-monitor`), and successfully rebuilt the React production bundle. Verified and logged all absolute CLI paths in the environment.
+- [DONE] **20-05-2026**: Upgraded the Scout model to the stable `gemini-3.1-flash-lite` across the frontend (`src/utils/ai.js`) and both edge functions (`generate-strip-insights` and `nudge-monitor`). Also updated `gemini-3.1-flash-lite-preview` to stable `gemini-3.1-flash-lite` in the Insight tier waterfalls. Rebuilt the React production bundle.
+- [DONE] **20-05-2026**: Implemented resilient multi-model Scout waterfall fallbacks (`gemini-3.1-flash-lite` -> `gemini-2.5-flash-lite`) for Phase 1 weather searches in frontend (`src/utils/ai.js`) and both edge functions (`generate-strip-insights` and `nudge-monitor`). Rebuilt the React production bundle successfully.
 
 
 - [DONE] **01-05-2026**: Redesigned header — removed welcome subtitle, replaced logout text with icon-only, added user-initials avatar bubble (RK/RS).

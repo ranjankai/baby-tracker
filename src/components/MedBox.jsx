@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, Plus, ChevronDown, ChevronUp, Loader, Pill } from 'lucide-react';
+import { Settings, Plus, ChevronDown, ChevronUp, Loader } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { callDualTierAI } from '../utils/ai';
 
-// ── Gemma outputs reasoning + multiple JSON blocks — extract the last valid one ──
+// ── JSON extractor (handles reasoning models that emit multiple blocks) ────────
 function extractLastJson(text) {
   if (!text) throw new Error('Empty model response');
   const stripped = text.replace(/```json|```/g, '');
@@ -22,22 +22,15 @@ function extractLastJson(text) {
   throw new Error('No valid JSON found in model response');
 }
 
-// ── Hardened Medicine helpers ────────────────────────────────────────────────
-
-function medName(m) { 
+// ── Medicine name helper ──────────────────────────────────────────────────────
+function medName(m) {
   if (!m) return '';
-  return typeof m === 'string' ? m : m.name || ''; 
-}
-function medMax(m)  { 
-  if (!m || typeof m === 'string') return null;
-  return m.max_per_day || null; 
+  return typeof m === 'string' ? m : (m.name || '');
 }
 
+// ── 24h dose count (rolling calendar day) ────────────────────────────────────
 function getDayStart() {
-  const now = new Date();
-  const cutoff = new Date(now);
-  cutoff.setHours(0, 0, 0, 0);
-  return cutoff;
+  const d = new Date(); d.setHours(0, 0, 0, 0); return d;
 }
 
 function count24h(name, medEvents) {
@@ -49,137 +42,251 @@ function count24h(name, medEvents) {
   ).length;
 }
 
-function isCapped(m, medEvents) {
-  const name = medName(m);
-  const max = medMax(m);
-  if (!name) return false;
-  return max !== null && count24h(name, medEvents) >= max;
+// ── Min-gap check: has N hours elapsed since last dose of this med? ───────────
+function minGapElapsed(name, medEvents, minHours) {
+  if (!minHours || !name || !medEvents?.length) return true;
+  const relevant = medEvents
+    .filter(e => e.notes?.toLowerCase() === name.toLowerCase())
+    .sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
+  if (!relevant.length) return true;
+  return (Date.now() - new Date(relevant[0].start_time)) / 3_600_000 >= minHours;
 }
 
-// ── Due-calculation helpers (HARDENED) ───────────────────────────────────────
+function hoursUntilMinGap(name, medEvents, minHours) {
+  if (!minHours || !name || !medEvents?.length) return null;
+  const relevant = medEvents
+    .filter(e => e.notes?.toLowerCase() === name.toLowerCase())
+    .sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
+  if (!relevant.length) return null;
+  const nextMs = new Date(relevant[0].start_time).getTime() + minHours * 3_600_000;
+  return Math.max(0, (nextMs - Date.now()) / 3_600_000);
+}
 
-function getRotationDue(schedule, medEvents) {
-  if (!schedule?.medicines) return null;
-  const meds = schedule.medicines;
+// ── Taper: calculate active phase and current dose ────────────────────────────
+function getTaperPhase(s) {
+  if (!s?.is_tapering_regimen || !s.taper_steps?.length || !s.created_at) return null;
+  const dayOffset = Math.floor((Date.now() - new Date(s.created_at)) / 86_400_000);
+  let cumDay = 0;
+  for (const step of s.taper_steps) {
+    cumDay += step.durationInDays;
+    if (dayOffset < cumDay) return step;
+  }
+  return s.taper_steps[s.taper_steps.length - 1]; // last phase (maintenance)
+}
+
+// ── Due logic ─────────────────────────────────────────────────────────────────
+
+function isCapped(s, name, medEvents) {
+  const cap = s.max_doses_per_24h;
+  if (!cap || !name) return false;
+  return count24h(name, medEvents) >= cap;
+}
+
+function getRotationDue(s, medEvents) {
+  if (!s?.medicines) return null;
+  const meds = s.medicines;
   const events = medEvents || [];
-  
   const relevant = events
     .filter(e => meds.some(m => medName(m).toLowerCase() === e.notes?.toLowerCase()))
     .sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
-
   let startIdx = 0;
   if (relevant.length > 0) {
     const lastIdx = meds.findIndex(m => medName(m).toLowerCase() === relevant[0].notes?.toLowerCase());
     startIdx = (lastIdx < 0 ? 0 : lastIdx + 1) % meds.length;
   }
-
   for (let i = 0; i < meds.length; i++) {
     const m = meds[(startIdx + i) % meds.length];
-    if (m && !isCapped(m, events)) return medName(m);
+    if (m && !isCapped(s, medName(m), events)) return medName(m);
   }
   return null;
 }
 
-function isIntervalDue(schedule, medEvents) {
-  if (!schedule?.medicines?.[0] || !schedule.interval_hours) return false;
+function isIntervalDue(s, medEvents) {
+  if (!s?.medicines?.[0] || !s.interval_hours) return false;
   const events = medEvents || [];
   const relevant = events
-    .filter(e => schedule.medicines.some(m => medName(m).toLowerCase() === e.notes?.toLowerCase()))
+    .filter(e => s.medicines.some(m => medName(m).toLowerCase() === e.notes?.toLowerCase()))
     .sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
-  if (relevant.length === 0) return true;
-  return (Date.now() - new Date(relevant[0].start_time)) / 3600000 >= schedule.interval_hours;
+  if (!relevant.length) return true;
+  return (Date.now() - new Date(relevant[0].start_time)) / 3_600_000 >= s.interval_hours;
 }
 
-function intervalHoursUntil(schedule, medEvents) {
-  if (!schedule?.medicines?.[0] || !schedule.interval_hours) return null;
+function intervalHoursUntil(s, medEvents) {
+  if (!s?.medicines?.[0] || !s.interval_hours) return null;
   const events = medEvents || [];
   const relevant = events
-    .filter(e => schedule.medicines.some(m => medName(m).toLowerCase() === e.notes?.toLowerCase()))
+    .filter(e => s.medicines.some(m => medName(m).toLowerCase() === e.notes?.toLowerCase()))
     .sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
-  if (relevant.length === 0) return null;
-  const nextMs = new Date(relevant[0].start_time).getTime() + schedule.interval_hours * 3600000;
-  return Math.max(0, (nextMs - Date.now()) / 3600000);
+  if (!relevant.length) return null;
+  const nextMs = new Date(relevant[0].start_time).getTime() + s.interval_hours * 3_600_000;
+  return Math.max(0, (nextMs - Date.now()) / 3_600_000);
 }
 
-function isTimeWindowDue(schedule, medEvents) {
-  if (!schedule?.window_start || !schedule.window_end) return false;
+function isTimeWindowDue(s, medEvents) {
+  if (!s?.window_start || !s.window_end) return false;
   const now = new Date();
   const cur = now.getHours() * 60 + now.getMinutes();
-  const [sH, sM] = schedule.window_start.split(':').map(Number);
-  const [eH, eM] = schedule.window_end.split(':').map(Number);
+  const [sH, sM] = s.window_start.split(':').map(Number);
+  const [eH, eM] = s.window_end.split(':').map(Number);
   if (cur < sH * 60 + sM || cur > eH * 60 + eM) return false;
   const winStart = new Date(now); winStart.setHours(sH, sM, 0, 0);
   const winEnd   = new Date(now); winEnd.setHours(eH, eM, 0, 0);
   return !(medEvents || []).some(e =>
-    schedule.medicines.some(m => medName(m).toLowerCase() === e.notes?.toLowerCase()) &&
+    s.medicines.some(m => medName(m).toLowerCase() === e.notes?.toLowerCase()) &&
     new Date(e.start_time) >= winStart && new Date(e.start_time) <= winEnd
   );
 }
 
-function archetypeLabel(s) {
-  if (s.archetype === 'rotation')    return 'Alternating';
-  if (s.archetype === 'interval')    return s.interval_hours ? `Every ${s.interval_hours}h` : 'Daily Limit';
-  if (s.archetype === 'time_window') return `${s.window_start}–${s.window_end}`;
-  return '';
+function isSOSDue(s, name, medEvents) {
+  // SOS: always available unless daily cap hit or min gap not elapsed
+  if (isCapped(s, name, medEvents)) return false;
+  if (!minGapElapsed(name, medEvents, s.min_hours_between_doses)) return false;
+  return true;
 }
 
-// ── Sub-components ───────────────────────────────────────────────────────────
+// ── SPECIFIC_DAYS: is today one of the scheduled days? ───────────────────────
+function isSpecificDayDue(s, medEvents) {
+  if (!s?.specific_days?.length) return false;
+  const todayISO = new Date().getDay() || 7; // JS 0=Sun → convert to ISO 1=Mon…7=Sun
+  if (!s.specific_days.includes(todayISO)) return false;
+  // Within today, treat like time_window or simply once-per-day
+  const dayStart = getDayStart();
+  return !(medEvents || []).some(e =>
+    s.medicines.some(m => medName(m).toLowerCase() === e.notes?.toLowerCase()) &&
+    new Date(e.start_time) >= dayStart
+  );
+}
+
+// ── Labels ────────────────────────────────────────────────────────────────────
+const DAY_NAMES = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function archetypeLabel(s) {
+  if (s.frequency_type === 'SOS') return 'SOS / As needed';
+  if (s.frequency_type === 'SPECIFIC_DAYS' && s.specific_days?.length)
+    return s.specific_days.map(d => DAY_NAMES[d] || d).join(', ');
+  if (s.archetype === 'rotation')    return 'Alternating';
+  if (s.archetype === 'interval')    return s.interval_hours ? `Every ${s.interval_hours}h` : 'Daily';
+  if (s.archetype === 'time_window') return `${s.window_start}–${s.window_end}`;
+  return 'Daily';
+}
+
+// ── NLP prompt ────────────────────────────────────────────────────────────────
+const NLP_PROMPT = (input) => `You are a pediatric prescription parser. Parse the following into structured JSON.
+
+Input: "${input}"
+
+Rules:
+- archetype: "rotation" = medicines alternate each dose | "interval" = fixed gap | "time_window" = once within a daily window | "sos" = as-needed
+- frequency_type: "DAILY" | "INTERVAL" | "SPECIFIC_DAYS" | "SOS"
+- specific_days uses ISO weekday numbers: 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun
+- For tapering/step-up regimens set isTaperingRegimen=true and fill taperSteps
+- Include dosage in the medicine name string (e.g. "Neopeptine 0.5ml")
+
+Output ONLY valid JSON (no explanation):
+{
+  "archetype": "rotation" | "interval" | "time_window" | "sos",
+  "frequency_type": "DAILY" | "INTERVAL" | "SPECIFIC_DAYS" | "SOS",
+  "medicines": [{"name": "MedicineName Dose Unit"}],
+  "interval_hours": null or number,
+  "window_start": null or "HH:MM",
+  "window_end": null or "HH:MM",
+  "specific_days": null or [1,4],
+  "preferred_times": null or ["08:00","20:00"],
+  "timing": "before" | "after" | "with" | "anytime",
+  "max_doses_per_24h": null or number,
+  "min_hours_between_doses": null or number,
+  "duration_days": null or number,
+  "is_tapering_regimen": false or true,
+  "taper_steps": null or [{"phaseOrder":1,"durationInDays":3,"doseValue":5,"doseUnit":"ml"}],
+  "confidence": "high" | "medium" | "low"
+}`;
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function TaperBadge({ s }) {
+  const phase = getTaperPhase(s);
+  if (!phase) return null;
+  const total = s.taper_steps?.length || 0;
+  return (
+    <span style={{ fontSize: '10px', fontWeight: 700, color: '#7c3aed', background: '#ede9fe',
+      borderRadius: '99px', padding: '2px 7px', marginLeft: '4px' }}>
+      Phase {phase.phaseOrder}/{total} · {phase.doseValue}{phase.doseUnit}
+    </span>
+  );
+}
 
 function MedRow({ s, dueMed, isDue, hoursUntil, medEvents, loggingMed, onTap }) {
   if (!s || !s.medicines) return null;
   return (
     <div style={{ marginBottom: '8px' }}>
-      <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
-        {archetypeLabel(s)}{s.timing !== 'anytime' ? ` · ${s.timing} feed` : ''}
+      <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600,
+        textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+        {archetypeLabel(s)}{s.timing && s.timing !== 'anytime' ? ` · ${s.timing} feed` : ''}
+        {s.preferred_times?.length ? ` · ${s.preferred_times.join(', ')}` : ''}
       </div>
       {s.medicines.map(m => {
-        const name = medName(m);
-        const max  = medMax(m);
-        const n    = count24h(name, medEvents);
-        const capped     = max !== null && n >= max;
-        const isThisDue  = isDue && name && name.toLowerCase() === dueMed?.toLowerCase();
-        const isLogging  = loggingMed === name;
+        const name     = medName(m);
+        const n        = count24h(name, medEvents);
+        const cap      = s.max_doses_per_24h;
+        const capped   = cap != null && n >= cap;
+        const gapLeft  = s.frequency_type === 'SOS'
+          ? hoursUntilMinGap(name, medEvents, s.min_hours_between_doses)
+          : null;
+        const gapBlock = gapLeft != null && gapLeft > 0;
+        const disabled = capped || gapBlock;
+        const isThisDue = isDue && name && name.toLowerCase() === dueMed?.toLowerCase();
+        const isLogging = loggingMed === name;
 
         return (
           <button key={name || Math.random()}
             onClick={() => onTap(s, name, dueMed)}
-            disabled={isLogging || capped}
+            disabled={isLogging || disabled}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               width: '100%',
-              background: capped ? 'var(--bg-app)' : isThisDue ? 'var(--primary-light)' : 'var(--bg-app)',
-              border: `1.5px solid ${isThisDue && !capped ? 'var(--primary)' : 'var(--border-soft)'}`,
-              borderRadius: '12px', padding: '10px 14px', cursor: capped ? 'not-allowed' : 'pointer',
+              background: disabled ? 'var(--bg-app)' : isThisDue ? 'var(--primary-light)' : 'var(--bg-app)',
+              border: `1.5px solid ${isThisDue && !disabled ? 'var(--primary)' : 'var(--border-soft)'}`,
+              borderRadius: '12px', padding: '10px 14px',
+              cursor: disabled ? 'not-allowed' : 'pointer',
               marginBottom: '6px', fontFamily: 'var(--sans)', transition: 'all 0.2s',
-              opacity: capped ? 0.5 : 1,
-              animation: isThisDue && !capped ? 'pulse-suggestion 3s cubic-bezier(0.4,0,0.6,1) infinite' : 'none',
+              opacity: disabled ? 0.5 : 1,
+              animation: isThisDue && !disabled ? 'pulse-suggestion 3s cubic-bezier(0.4,0,0.6,1) infinite' : 'none',
             }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
               <span style={{ fontSize: '16px' }}>💊</span>
-              <span style={{ fontWeight: 600, fontSize: '14px', color: isThisDue && !capped ? 'var(--primary)' : 'var(--text-main)' }}>
+              <span style={{ fontWeight: 600, fontSize: '14px',
+                color: isThisDue && !disabled ? 'var(--primary)' : 'var(--text-main)' }}>
                 {name}
               </span>
               <span style={{ fontSize: '12px', color: 'var(--text-muted)', flexShrink: 0 }}>
-                ({n}{max ? `/${max}` : ''} today)
+                ({n}{cap ? `/${cap}` : ''} today)
               </span>
+              {s.is_tapering_regimen && <TaperBadge s={s} />}
               {s.expires_at && (
                 <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 700, marginLeft: '4px', opacity: 0.8 }}>
-                  ⌛ {Math.ceil((new Date(s.expires_at) - Date.now()) / 86400000)}d left
+                  ⌛ {Math.ceil((new Date(s.expires_at) - Date.now()) / 86_400_000)}d left
                 </span>
               )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
               {capped && (
-                <span style={{ fontSize: '11px', fontWeight: 700, color: '#b45309', background: '#fef3c7', borderRadius: '99px', padding: '2px 8px' }}>
-                  MAX
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#b45309',
+                  background: '#fef3c7', borderRadius: '99px', padding: '2px 8px' }}>MAX</span>
+              )}
+              {gapBlock && !capped && (
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  in {gapLeft.toFixed(1)}h
                 </span>
               )}
-              {isThisDue && !capped && (
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)', background: 'var(--primary-light)', borderRadius: '99px', padding: '2px 8px' }}>
-                  DUE
-                </span>
+              {isThisDue && !disabled && (
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)',
+                  background: 'var(--primary-light)', borderRadius: '99px', padding: '2px 8px' }}>DUE</span>
               )}
-              {!isDue && s.archetype === 'interval' && hoursUntil != null && !capped && (
+              {s.frequency_type === 'SOS' && !disabled && (
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#0284c7',
+                  background: '#e0f2fe', borderRadius: '99px', padding: '2px 8px' }}>SOS</span>
+              )}
+              {!isDue && s.archetype === 'interval' && hoursUntil != null && !disabled && (
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>in {hoursUntil.toFixed(1)}h</span>
               )}
               {isLogging
@@ -190,6 +297,72 @@ function MedRow({ s, dueMed, isDue, hoursUntil, medEvents, loggingMed, onTap }) 
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function ConfirmPreview({ p, nlpInput, onEdit, onConfirm }) {
+  const taperSteps = p.taper_steps;
+  return (
+    <div style={{ background: 'var(--bg-app)', borderRadius: '14px', padding: '16px' }}>
+      <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
+        You said: <em>"{nlpInput}"</em>
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+        <div style={{ fontSize: '14px' }}>
+          <strong>Medicines:</strong>{' '}
+          {p.medicines?.map(m => medName(m)).join(' → ')}
+        </div>
+        <div style={{ fontSize: '14px' }}>
+          <strong>Type:</strong>{' '}
+          {p.frequency_type === 'SOS'            ? 'SOS / As needed' :
+           p.frequency_type === 'SPECIFIC_DAYS'  ? `Specific days: ${(p.specific_days || []).map(d => DAY_NAMES[d]).join(', ')}` :
+           p.archetype === 'rotation'            ? 'Alternating (one per dose)' :
+           p.archetype === 'interval'            ? `Every ${p.interval_hours}h` :
+           p.window_start                        ? `Window ${p.window_start}–${p.window_end}` :
+           'Daily'}
+        </div>
+        {p.timing && p.timing !== 'anytime' && (
+          <div style={{ fontSize: '14px' }}><strong>Timing:</strong> {p.timing} feed</div>
+        )}
+        {p.preferred_times?.length > 0 && (
+          <div style={{ fontSize: '14px' }}><strong>Times:</strong> {p.preferred_times.join(', ')}</div>
+        )}
+        {p.max_doses_per_24h && (
+          <div style={{ fontSize: '14px', color: '#b45309' }}>
+            <strong>Cap:</strong> max {p.max_doses_per_24h}/day
+          </div>
+        )}
+        {p.min_hours_between_doses && (
+          <div style={{ fontSize: '14px' }}>
+            <strong>Min gap:</strong> {p.min_hours_between_doses}h between doses
+          </div>
+        )}
+        {p.duration_days && (
+          <div style={{ fontSize: '14px', color: '#b45309', fontWeight: 600 }}>
+            <strong>Duration:</strong> {p.duration_days} days
+          </div>
+        )}
+        {p.is_tapering_regimen && taperSteps?.length > 0 && (
+          <div style={{ fontSize: '14px' }}>
+            <strong>Taper:</strong>
+            <div style={{ marginTop: '4px', paddingLeft: '8px', borderLeft: '2px solid var(--border-soft)' }}>
+              {taperSteps.map((step, i) => (
+                <div key={i} style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                  Phase {step.phaseOrder}: {step.doseValue}{step.doseUnit} × {step.durationInDays}d
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div style={{ fontSize: '12px', color: p.confidence === 'high' ? 'var(--secondary)' : '#b45309' }}>
+          Confidence: {p.confidence}
+        </div>
+      </div>
+      <div className="grid-2">
+        <button className="button-primary" style={{ background: '#eee', color: '#666' }} onClick={onEdit}>Edit</button>
+        <button className="button-primary" onClick={onConfirm}>Save ✓</button>
+      </div>
     </div>
   );
 }
@@ -210,10 +383,12 @@ function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedConfir
               <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border-soft)' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {(s.medicines || []).map(m => medMax(m) ? `${medName(m)} (max ${medMax(m)}/day)` : medName(m)).join(' → ')}
+                    {(s.medicines || []).map(m => medName(m)).join(' → ')}
+                    {s.is_tapering_regimen && <TaperBadge s={s} />}
                   </div>
                   <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                    {archetypeLabel(s)}{s.timing !== 'anytime' ? ` · ${s.timing} feed` : ''}
+                    {archetypeLabel(s)}{s.timing && s.timing !== 'anytime' ? ` · ${s.timing} feed` : ''}
+                    {s.max_doses_per_24h ? ` · max ${s.max_doses_per_24h}/day` : ''}
                     {s.expires_at && (
                       <span style={{ color: '#b45309', fontWeight: 600 }}>
                         {' '}· Expires {new Date(s.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -235,7 +410,7 @@ function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedConfir
             <textarea
               className="comment-textarea"
               rows={3}
-              placeholder={`"Alternate Colicaid and Neopeptine, Colicaid max 4/day, Neopeptine max 3/day"\n"Vitamin D3 0.5ml once at night"\n"Gripe water every 4 hours"`}
+              placeholder={`"Alternate Colicaid and Neopeptine max 3/day each"\n"Brufen SOS max 2/day min 6h gap"\n"Prednisolone 5ml/day for 3 days then 2.5ml/day for 3 days"\n"Vitamin D3 0.5ml every night"`}
               value={nlpInput}
               onChange={e => { setNlpInput(e.target.value); setParseError(''); }}
               style={{ marginBottom: '10px', width: '100%' }}
@@ -248,36 +423,12 @@ function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedConfir
             </button>
           </>
         ) : (
-          <div style={{ background: 'var(--bg-app)', borderRadius: '14px', padding: '16px' }}>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
-              You said: <em>"{nlpInput}"</em>
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '14px' }}>
-                <strong>Medicines:</strong>{' '}
-                {parsedConfirm.medicines?.map(m =>
-                  medMax(m) ? `${medName(m)} (max ${medMax(m)}/day)` : medName(m)
-                ).join(' → ')}
-              </div>
-              <div style={{ fontSize: '14px' }}><strong>Schedule:</strong> {
-                parsedConfirm.archetype === 'rotation'    ? 'Alternating (one per dose)' :
-                parsedConfirm.archetype === 'interval'    ? (parsedConfirm.interval_hours ? `Every ${parsedConfirm.interval_hours}h` : 'Daily Limit') :
-                `${parsedConfirm.window_start}–${parsedConfirm.window_end} daily`
-              }</div>
-              {parsedConfirm.timing !== 'anytime' && (
-                <div style={{ fontSize: '14px' }}><strong>Timing hint:</strong> {parsedConfirm.timing} feed</div>
-              )}
-              {parsedConfirm.duration_days && (
-                <div style={{ fontSize: '14px', color: '#b45309', fontWeight: 600 }}>
-                  <strong>Duration:</strong> {parsedConfirm.duration_days} days
-                </div>
-              )}
-            </div>
-            <div className="grid-2">
-              <button className="button-primary" style={{ background: '#eee', color: '#666' }} onClick={() => setParsedConfirm(null)}>Edit</button>
-              <button className="button-primary" onClick={onConfirm}>Save ✓</button>
-            </div>
-          </div>
+          <ConfirmPreview
+            p={parsedConfirm}
+            nlpInput={nlpInput}
+            onEdit={() => setParsedConfirm(null)}
+            onConfirm={onConfirm}
+          />
         )}
       </div>
     </div>
@@ -321,7 +472,7 @@ export default function MedBox() {
   const [override, setOverride]           = useState(null);
   const [loggingMed, setLoggingMed]       = useState(null);
 
-  // ── Fetch ─────────────────────────────────────────────────────────────────
+  // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     if (!supabase) return;
     try {
@@ -333,7 +484,6 @@ export default function MedBox() {
         supabase.from('baby_events').select('id,start_time,notes,type')
           .eq('type', 'medicine').order('start_time', { ascending: false }).limit(300),
       ]);
-      console.log('[MedBox] Data fetched:', { schedules: sRes.data?.length, events: eRes.data?.length });
       if (sRes.data) setSchedules(sRes.data);
       if (eRes.data) setMedEvents(eRes.data);
     } catch (e) { console.error('MedBox fetch error:', e); }
@@ -355,12 +505,21 @@ export default function MedBox() {
     };
   }, [fetchData]);
 
-  // ── Protected Render ───────────────────────────────────────────────────────
+  // ── Protected render ───────────────────────────────────────────────────────
   try {
     if (loadingData) return null;
 
-    // Computed dues with hardened safety
     const dues = schedules.map(s => {
+      if (s.frequency_type === 'SOS') {
+        const name = medName(s.medicines?.[0]);
+        const isDue = isSOSDue(s, name, medEvents);
+        const gapLeft = hoursUntilMinGap(name, medEvents, s.min_hours_between_doses);
+        return { s, dueMed: name, isDue, hoursUntil: gapLeft };
+      }
+      if (s.frequency_type === 'SPECIFIC_DAYS') {
+        const name = medName(s.medicines?.[0]);
+        return { s, dueMed: name, isDue: isSpecificDayDue(s, medEvents) };
+      }
       if (s.archetype === 'rotation') {
         const dueMed = getRotationDue(s, medEvents);
         return { s, dueMed, isDue: dueMed !== null };
@@ -399,31 +558,8 @@ export default function MedBox() {
     const handleParseNlp = async () => {
       if (!nlpInput.trim()) return;
       setIsParsing(true); setParseError(''); setParsedConfirm(null);
-      const prompt = `Parse this baby medicine schedule. Input: "${nlpInput}"
-
-Archetypes:
-- rotation: medicines alternate one per dose
-- interval: give every N hours
-- time_window: give once in a time window
-
-Output ONLY valid JSON:
-{
-  "archetype": "rotation"|"interval"|"time_window",
-  "medicines": [{"name": "Name", "max_per_day": null or number}],
-  "interval_hours": null or number,
-  "window_start": null or "HH:MM",
-  "window_end": null or "HH:MM",
-  "timing": "before"|"after"|"with"|"anytime",
-  "duration_days": null or number,
-  "confidence": "high"|"medium"|"low"
-}`;
       try {
-        let raw;
-        try {
-          raw = await callDualTierAI(prompt, 'protocol', 'text/plain');
-        } catch (protocolErr) {
-          raw = await callDualTierAI(prompt, 'insight', 'text/plain');
-        }
+        const raw = await callDualTierAI(NLP_PROMPT(nlpInput), 'insight', 'text/plain');
         setParsedConfirm(extractLastJson(raw));
       } catch (e) {
         console.error('NLP parse error:', e.message);
@@ -433,22 +569,27 @@ Output ONLY valid JSON:
 
     const handleConfirmSchedule = async () => {
       if (!parsedConfirm || !supabase) return;
+      const p = parsedConfirm;
       const { error } = await supabase.from('med_schedules').insert([{
-        medicines:      parsedConfirm.medicines,
-        archetype:      parsedConfirm.archetype,
-        interval_hours: parsedConfirm.interval_hours || null,
-        window_start:   parsedConfirm.window_start   || null,
-        window_end:     parsedConfirm.window_end     || null,
-        timing:         parsedConfirm.timing         || 'anytime',
-        expires_at:     parsedConfirm.duration_days 
-          ? new Date(Date.now() + parsedConfirm.duration_days * 86400000).toISOString()
+        medicines:               p.medicines,
+        archetype:               p.archetype,
+        frequency_type:          p.frequency_type          || 'DAILY',
+        interval_hours:          p.interval_hours          || null,
+        window_start:            p.window_start            || null,
+        window_end:              p.window_end              || null,
+        specific_days:           p.specific_days           || null,
+        preferred_times:         p.preferred_times         || null,
+        timing:                  p.timing                  || 'anytime',
+        max_doses_per_24h:       p.max_doses_per_24h       || null,
+        min_hours_between_doses: p.min_hours_between_doses || null,
+        is_tapering_regimen:     p.is_tapering_regimen     || false,
+        taper_steps:             p.taper_steps             || null,
+        expires_at: p.duration_days
+          ? new Date(Date.now() + p.duration_days * 86_400_000).toISOString()
           : null,
-        nlp_input:      nlpInput,
+        nlp_input: nlpInput,
       }]);
-      if (error) {
-        setParseError(`Save failed: ${error.message}`);
-        return;
-      }
+      if (error) { setParseError(`Save failed: ${error.message}`); return; }
       setNlpInput(''); setParsedConfirm(null); setShowConfig(false);
       fetchData();
     };
@@ -530,6 +671,6 @@ Output ONLY valid JSON:
     );
   } catch (err) {
     console.error('MedBox critical render error:', err);
-    return null; // Fail silently to protect main app
+    return null;
   }
 }

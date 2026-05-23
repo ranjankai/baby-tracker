@@ -16,7 +16,8 @@ export async function callDualTierAI(prompt, tier = "protocol", responseMimeType
   const chains = {
     // INSIGHT TIER: Deep analysis, pattern recognition, long-context summaries
     "insight": [
-      'gemini-3.1-flash-lite-preview',
+      'gemini-3.5-flash',
+      'gemini-3.1-flash-lite',
       'gemini-3-flash-preview',
       'gemini-2.5-flash',
       'gemini-2.5-flash-lite'
@@ -80,20 +81,30 @@ async function getEnvironmentContext() {
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' });
   const scoutPrompt = `Today is ${today}. Return a 2-sentence summary of the CURRENT atmospheric and climate conditions TODAY which can affect a <3 month old baby girl's health in ${LOCATION}.`;
 
-  try {
-    console.log("Phase 1: Scout fetching environmental context...");
-    const scoutModel = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash-lite',
-      tools: [{ googleSearch: {} }]
-    });
-    const result = await scoutModel.generateContent(scoutPrompt);
-    cachedEnvironmentContext = result.response.text();
-    console.log("Scout Context:", cachedEnvironmentContext);
-    return cachedEnvironmentContext;
-  } catch (e) {
-    console.error("Scout failed:", e);
-    return "No live environmental data available.";
+  const scoutWaterfall = [
+    'gemini-3.1-flash-lite',
+    'gemini-2.5-flash-lite'
+  ];
+
+  for (const modelName of scoutWaterfall) {
+    try {
+      console.log(`Phase 1: Scout fetching environmental context using ${modelName}...`);
+      const scoutModel = genAI.getGenerativeModel({
+        model: modelName,
+        tools: [{ googleSearch: {} }]
+      });
+      const result = await scoutModel.generateContent(scoutPrompt);
+      cachedEnvironmentContext = result.response.text();
+      console.log(`Scout Context retrieved successfully via ${modelName}:`, cachedEnvironmentContext);
+      return cachedEnvironmentContext;
+    } catch (e) {
+      console.error(`Scout model ${modelName} failed:`, e.message || e);
+      if (e.message && e.message.toLowerCase().includes('api key')) break;
+    }
   }
+
+  console.error("All Scout models failed to fetch environmental context.");
+  return "No live environmental data available.";
 }
 
 /**

@@ -97,17 +97,25 @@ Deno.serve(async (_req) => {
 
       
       let environmentContext = "No specific environmental data retrieved today.";
-      try {
-        console.log("Nudge Phase 1: Scout fetching environmental context...");
-        const scoutModel = genAI.getGenerativeModel({
-          model: 'gemini-2.5-flash-lite',
-          tools: [{ googleSearch: {} }] as any
-        });
-        const scoutResult = await scoutModel.generateContent(scoutPrompt);
-        environmentContext = scoutResult.response.text();
-        console.log("Nudge Scout Context:", environmentContext);
-      } catch (e) {
-        console.error("Nudge Scout failed:", e.message);
+      const scoutWaterfall = [
+        'gemini-3.1-flash-lite',
+        'gemini-2.5-flash-lite'
+      ];
+      for (const modelName of scoutWaterfall) {
+        try {
+          console.log(`Nudge Phase 1: Scout fetching environmental context using ${modelName}...`);
+          const scoutModel = genAI.getGenerativeModel({
+            model: modelName,
+            tools: [{ googleSearch: {} }] as any
+          });
+          const scoutResult = await scoutModel.generateContent(scoutPrompt);
+          environmentContext = scoutResult.response.text();
+          console.log(`Nudge Scout Context retrieved successfully via ${modelName}:`, environmentContext);
+          break;
+        } catch (e) {
+          console.error(`Nudge Scout model ${modelName} failed:`, e.message);
+          if (e.message && e.message.toLowerCase().includes('api key')) break;
+        }
       }
 
       // Phase 2: The "Expert" (Main Analysis)
@@ -128,7 +136,8 @@ Deno.serve(async (_req) => {
 
       // Dual-Tier Waterfall (Expert Phase - NO TOOLS attached)
       const insightChain = [
-        'gemini-3.1-flash-lite-preview',
+        'gemini-3.5-flash',
+        'gemini-3.1-flash-lite',
         'gemini-3-flash-preview',
         'gemini-2.5-flash',
         'gemini-2.5-flash-lite'

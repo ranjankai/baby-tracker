@@ -72,17 +72,25 @@ Deno.serve(async (req) => {
 
     
     let environmentContext = "No specific environmental data retrieved today.";
-    try {
-      console.log("Phase 1: Scout fetching environmental context...");
-      const scoutModel = genAI.getGenerativeModel({
-        model: 'gemini-2.5-flash-lite',
-        tools: [{ googleSearch: {} }] as any
-      });
-      const scoutResult = await scoutModel.generateContent(scoutPrompt);
-      environmentContext = scoutResult.response.text();
-      console.log("Scout Context:", environmentContext);
-    } catch (e) {
-      console.error("Scout failed, proceeding without live context:", e.message);
+    const scoutWaterfall = [
+      'gemini-3.1-flash-lite',
+      'gemini-2.5-flash-lite'
+    ];
+    for (const modelName of scoutWaterfall) {
+      try {
+        console.log(`Phase 1: Scout fetching environmental context using ${modelName}...`);
+        const scoutModel = genAI.getGenerativeModel({
+          model: modelName,
+          tools: [{ googleSearch: {} }] as any
+        });
+        const scoutResult = await scoutModel.generateContent(scoutPrompt);
+        environmentContext = scoutResult.response.text();
+        console.log(`Scout Context retrieved successfully via ${modelName}:`, environmentContext);
+        break;
+      } catch (e) {
+        console.error(`Scout model ${modelName} failed:`, e.message);
+        if (e.message && e.message.toLowerCase().includes('api key')) break;
+      }
     }
 
     // 5. Phase 2: The "Expert" (Main Analysis)
@@ -118,7 +126,8 @@ Deno.serve(async (req) => {
 
     // 6. Gemini Waterfall
     const insightChain = [
-      'gemini-3.1-flash-lite-preview',
+      'gemini-3.5-flash',
+      'gemini-3.1-flash-lite',
       'gemini-3-flash-preview',
       'gemini-2.5-flash',
       'gemini-2.5-flash-lite'
