@@ -1,15 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai";
-import { GEMINI_API_KEY as GLOBAL_GEMINI_API_KEY } from '../_shared/config.ts';
-
 // Environment setup
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TELEGRAM_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
 const TELEGRAM_CHAT_ID = Deno.env.get("TELEGRAM_CHAT_ID")!;
 
-// Global Gemini API key — imported from _shared/config.ts
-const genAI = new GoogleGenerativeAI(GLOBAL_GEMINI_API_KEY);
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function sendTelegram(message: string) {
@@ -26,8 +22,11 @@ async function sendTelegram(message: string) {
   }
 }
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
   try {
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is missing!");
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
     let alertSent = false;
     let alertMessage = "";
 
