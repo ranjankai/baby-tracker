@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MessageSquare, X, Send, Loader2, Bot, User } from 'lucide-react';
+import { MessageSquare, X, Send, Loader2, Bot, User, Copy, Check } from 'lucide-react';
 import { useBaby } from './BabyContext';
 import { askBabyTrackerQuestion } from '../utils/ai';
 
@@ -9,6 +9,18 @@ export default function InsightBox() {
   const [question, setQuestion] = useState('');
   const [conversation, setConversation] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState(null);
+
+  const handleCopy = (text, idx) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedIndex(idx);
+      setTimeout(() => {
+        setCopiedIndex(null);
+      }, 2000);
+    }).catch(err => {
+      console.error("Failed to copy text: ", err);
+    });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -155,20 +167,61 @@ export default function InsightBox() {
                 <div
                   key={idx}
                   style={{
+                    display: 'flex',
+                    flexDirection: 'row',
                     alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                    maxWidth: '85%',
-                    background: msg.role === 'user' ? 'var(--primary)' : 'rgba(255, 255, 255, 0.05)',
-                    color: msg.role === 'user' ? 'white' : 'var(--text-main)',
-                    padding: '12px 16px',
-                    borderRadius: '16px',
-                    borderBottomRightRadius: msg.role === 'user' ? '4px' : '16px',
-                    borderBottomLeftRadius: msg.role === 'ai' ? '4px' : '16px',
-                    fontSize: '14px',
-                    lineHeight: '1.5',
-                    wordBreak: 'break-word',
+                    maxWidth: '90%',
+                    alignItems: 'center',
+                    gap: '8px',
                   }}
                 >
-                  {msg.role === 'ai' ? renderFormattedText(msg.content) : msg.content}
+                  <div
+                    style={{
+                      background: msg.role === 'user' ? 'var(--primary)' : 'rgba(255, 255, 255, 0.05)',
+                      color: msg.role === 'user' ? 'white' : 'var(--text-main)',
+                      padding: '12px 16px',
+                      borderRadius: '16px',
+                      borderBottomRightRadius: msg.role === 'user' ? '4px' : '16px',
+                      borderBottomLeftRadius: msg.role === 'ai' ? '4px' : '16px',
+                      fontSize: '14px',
+                      lineHeight: '1.5',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {msg.role === 'ai' ? renderFormattedText(msg.content) : msg.content}
+                  </div>
+                  
+                  {msg.role === 'ai' && (
+                    <button
+                      onClick={() => handleCopy(msg.content, idx)}
+                      title="Copy message"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: copiedIndex === idx ? 'var(--primary)' : 'var(--text-muted)',
+                        padding: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'opacity 0.2s, color 0.2s',
+                        outline: 'none',
+                        opacity: copiedIndex === idx ? 1.0 : 0.4,
+                      }}
+                      onMouseOver={(e) => {
+                        if (copiedIndex !== idx) e.currentTarget.style.opacity = '0.9';
+                      }}
+                      onMouseOut={(e) => {
+                        if (copiedIndex !== idx) e.currentTarget.style.opacity = '0.4';
+                      }}
+                    >
+                      {copiedIndex === idx ? (
+                        <Check size={14} />
+                      ) : (
+                        <Copy size={14} />
+                      )}
+                    </button>
+                  )}
                 </div>
               ))
             )}
