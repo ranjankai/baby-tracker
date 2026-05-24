@@ -170,14 +170,18 @@ export async function askBabyTrackerQuestion(question, _uiEvents, allTimeStats) 
   // Phase 2: Insight Tier (Gemini) - Final Answer
   const envContext = await getEnvironmentContext();
   const ageContext = await getBabyAgeContext();
+  const currentLocalTime = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'full', timeStyle: 'long' });
 
   const insightPrompt = `
     You are a pediatric expert assistant answering a question from the parents of a ${ageContext} newborn girl.
     CRITICAL INSTRUCTION: You MUST heavily factor the baby's exact age (${ageContext}) into any physiological, digestive, or developmental reasoning you provide.
     
     You have access to:
-    1. CURRENT ENVIRONMENTAL CONTEXT (Gurgaon, India):
+    1. CURRENT LOCAL TIME (Gurgaon, India): ${currentLocalTime}
+    2. CURRENT ENVIRONMENTAL CONTEXT:
     ${envContext}
+
+    CRITICAL TIMEZONE RULE: The timestamps in the JSON logs below are in raw UTC (ending in 'Z'). You MUST mentally convert them to India Standard Time (IST) which is UTC+05:30 before counting events for words like "today" or "yesterday". For example, a log at "2026-05-23T20:00:00Z" is actually 1:30 AM on May 24th in IST!
 
     NOTE: Events with type 'medicine' represent doses given to the baby. The medicine name and dosage are in the 'notes' field.
     TASK: Answer this parent's question: "${question}" based on these baby logs: ${JSON.stringify(filteredEvents)}
