@@ -181,7 +181,8 @@ export async function askBabyTrackerQuestion(question, _uiEvents, allTimeStats) 
     2. CURRENT ENVIRONMENTAL CONTEXT:
     ${envContext}
 
-    CRITICAL TIMEZONE RULE: The timestamps in the JSON logs below are in raw UTC (ending in 'Z'). You MUST mentally convert them to India Standard Time (IST) which is UTC+05:30 before counting events for words like "today" or "yesterday". For example, a log at "2026-05-23T20:00:00Z" is actually 1:30 AM on May 24th in IST!
+    CRITICAL TIMEZONE RULE: The timestamps in the JSON logs below are in raw UTC (ending in 'Z'). You MUST mentally convert them to India Standard Time (IST) which is UTC+05:30 before analyzing them. 
+    Additionally, when you mention specific times in your response, you MUST format them in local IST (e.g., "1:30 AM", "4:15 PM") and NEVER mention UTC, GMT, or raw JSON timestamps to the parents.
 
     NOTE: Events with type 'medicine' represent doses given to the baby. The medicine name and dosage are in the 'notes' field.
     TASK: Answer this parent's question: "${question}" based on these baby logs: ${JSON.stringify(filteredEvents)}
