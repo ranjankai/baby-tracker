@@ -114,6 +114,8 @@ Deno.serve(async (req) => {
     // 5. Phase 2: The "Expert" (Main Analysis)
     const prompt = `
       You are a world-class pediatric expert and your friends are first time parents of this ${ageContext} newborn girl under discussion.
+      CRITICAL INSTRUCTION: You MUST heavily factor the baby's exact age (${ageContext}) into any physiological, digestive, or developmental reasoning you provide.
+      
       LOCATION of Parents: ${LOCATION}.
       CURRENT ENVIRONMENT: ${environmentContext}
 

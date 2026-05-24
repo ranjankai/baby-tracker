@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { supabase } from '../lib/supabase';
 
 // Global API Key
 const GLOBAL_GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
@@ -67,9 +68,36 @@ export async function callDualTierAI(prompt, tier = "protocol", responseMimeType
 let cachedEnvironmentContext = null;
 const LOCATION = "M3M Golf Estate, Sector 65, Gurgaon, India";
 
-async function getEnvironmentContext(ageContext = "<3 month old") {
+export async function getBabyAgeContext() {
+  try {
+    const { data: firstEventData } = await supabase
+      .from('baby_events')
+      .select('start_time')
+      .order('start_time', { ascending: true })
+      .limit(1);
+
+    if (!firstEventData?.[0]) return "<3 month old";
+    
+    const birthDate = new Date(firstEventData[0].start_time);
+    const diffMs = Date.now() - birthDate.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffWeeks = Math.floor(diffDays / 7);
+    
+    if (diffWeeks > 0) {
+      return `${diffWeeks} week old (approx ${diffDays} days)`;
+    } else {
+      return `${diffDays} day old`;
+    }
+  } catch (e) {
+    console.error("Age fetch failed", e);
+    return "<3 month old";
+  }
+}
+
+async function getEnvironmentContext() {
   if (cachedEnvironmentContext) return cachedEnvironmentContext;
   
+  const ageContext = await getBabyAgeContext();
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' });
   const scoutPrompt = `Today is ${today}. Return a 2-sentence summary of the CURRENT atmospheric and climate conditions TODAY which can affect a ${ageContext} baby girl's health in ${LOCATION}.`;
 
@@ -150,12 +178,16 @@ export async function askBabyTrackerQuestion(question, events, allTimeStats) {
   }
 
   // Phase 2: Insight Tier (Gemini) - Final Answer
-  const envContext = await getEnvironmentContext(ageContext);
+  const envContext = await getEnvironmentContext();
+  const ageContext = await getBabyAgeContext();
 
   const insightPrompt = `
-    You are a world-class pediatric expert and your friends are first time parents of this ${ageContext} newborn girl under discussion.
-    LOCATION of Parents: ${LOCATION}.
-    CURRENT ENVIRONMENT: ${envContext}
+    You are a pediatric expert assistant answering a question from the parents of a ${ageContext} newborn girl.
+    CRITICAL INSTRUCTION: You MUST heavily factor the baby's exact age (${ageContext}) into any physiological, digestive, or developmental reasoning you provide.
+    
+    You have access to:
+    1. CURRENT ENVIRONMENTAL CONTEXT (Gurgaon, India):
+    ${envContext}
 
     NOTE: Events with type 'medicine' represent doses given to the baby. The medicine name and dosage are in the 'notes' field.
     TASK: Answer this parent's question: "${question}" based on these baby logs: ${JSON.stringify(filteredEvents.slice(0, 100))}
@@ -178,23 +210,16 @@ export async function askBabyTrackerQuestion(question, events, allTimeStats) {
 /**
  * Filtered Log Summarizer: Generates 2-line numerical insight for filtered logs.
  */
-export async function generateFilteredSummary(events, allTimeStats) {
-  let ageContext = "<3 month old";
-  if (allTimeStats?.firstEventTime) {
-    const birthDate = new Date(allTimeStats.firstEventTime);
-    const diffMs = Date.now() - birthDate.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const diffWeeks = Math.floor(diffDays / 7);
-    if (diffWeeks > 0) {
-      ageContext = `${diffWeeks} week old (approx ${diffDays} days)`;
-    } else {
-      ageContext = `${diffDays} day old`;
-    }
+export async function generateFilteredSummary(filteredEvents) {
+  if (!filteredEvents || filteredEvents.length === 0) {
+    return null;
   }
 
+  const ageContext = await getBabyAgeContext();
+
   const prompt = `You are a pediatric data analyst.
-The parents have filtered their baby's logs to a specific subset.
-Baby Age: ${ageContext}.
+The parents of a ${ageContext} newborn girl have filtered their baby's logs to a specific subset.
+CRITICAL INSTRUCTION: You MUST heavily factor the baby's exact age (${ageContext}) into any physiological or digestive insights you provide.
 
 TASK: Analyze these logs and provide numerical insights.
 
