@@ -533,6 +533,7 @@ input[type="datetime-local"].input-field {
     gap: 24px;
     position: sticky;
     top: 24px;
+    z-index: 100;
   }
 
   .app-main {
@@ -544,7 +545,7 @@ input[type="datetime-local"].input-field {
   /* Summary Cards Desktop Overrides */
   .summary-scroll-container {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 16px;
     overflow-x: visible;
   }
