@@ -130,19 +130,15 @@ async function getEnvironmentContext() {
 /**
  * Chat Box Logic: Allows user to ask specific questions using Dual-Tier AI.
  */
-export async function askBabyTrackerQuestion(question, events, allTimeStats) {
-  let ageContext = "<3 month old";
-  if (allTimeStats?.firstEventTime) {
-    const birthDate = new Date(allTimeStats.firstEventTime);
-    const diffMs = Date.now() - birthDate.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const diffWeeks = Math.floor(diffDays / 7);
-    if (diffWeeks > 0) {
-      ageContext = `${diffWeeks} week old (approx ${diffDays} days)`;
-    } else {
-      ageContext = `${diffDays} day old`;
-    }
-  }
+export async function askBabyTrackerQuestion(question, _uiEvents, allTimeStats) {
+  // Fetch a deep history directly from Supabase to bypass UI pagination limits
+  const { data: deepEvents } = await supabase
+    .from('baby_events')
+    .select('*')
+    .order('start_time', { ascending: false })
+    .limit(400);
+    
+  const eventsToUse = deepEvents || _uiEvents;
 
   // Phase 1: Protocol Tier (Gemma) - Data Triage
   const protocolPrompt = `
@@ -153,26 +149,20 @@ export async function askBabyTrackerQuestion(question, events, allTimeStats) {
     Determine the data needed to answer this question.
     Output ONLY a JSON object:
     {
-      "timeframe_hours": number (0 for all time, 24 for 1 day, etc.),
       "event_types": array of strings (e.g., ["diaper", "mom_l", "mom_r", "top", "spit_up", "medicine"] or ["all"])
     }
   `;
 
-  let triage = { timeframe_hours: 24, event_types: ["all"] }; // safe default
+  let triage = { event_types: ["all"] }; // safe default
   try {
     const triageJson = await callDualTierAI(protocolPrompt, "protocol", "application/json");
     triage = JSON.parse(cleanJson(triageJson));
   } catch (error) {
-    console.warn("Triage AI failed, falling back to default (all events, 24h):", error.message);
-    // Do NOT abort — proceed with the default triage so Gemini still answers
+    console.warn("Triage AI failed, falling back to default (all events):", error.message);
   }
   
-  // Filter events based on triage
-  let filteredEvents = events;
-  if (triage.timeframe_hours > 0) {
-    const cutoff = new Date(Date.now() - triage.timeframe_hours * 60 * 60 * 1000);
-    filteredEvents = events.filter(e => new Date(e.start_time) >= cutoff);
-  }
+  // Filter events based on triage types only. Let Gemini handle the complex time/calendar logic!
+  let filteredEvents = eventsToUse;
   if (triage.event_types && !triage.event_types.includes("all")) {
     filteredEvents = filteredEvents.filter(e => triage.event_types.includes(e.type));
   }
@@ -190,7 +180,7 @@ export async function askBabyTrackerQuestion(question, events, allTimeStats) {
     ${envContext}
 
     NOTE: Events with type 'medicine' represent doses given to the baby. The medicine name and dosage are in the 'notes' field.
-    TASK: Answer this parent's question: "${question}" based on these baby logs: ${JSON.stringify(filteredEvents.slice(0, 100))}
+    TASK: Answer this parent's question: "${question}" based on these baby logs: ${JSON.stringify(filteredEvents)}
     
     RULES:
     - Your FIRST sentence must directly and specifically answer the question asked. Do not pivot to general advice before doing so.
@@ -235,7 +225,7 @@ REQUIRED JSON FORMAT:
   "insight": "An ultra-cool, mind-blowing numeric insight or hidden correlation found in this specific data."
 }
 
-Logs: ${JSON.stringify(events.slice(0, 150))}
+Logs: ${JSON.stringify(filteredEvents)}
   `;
 
   try {
