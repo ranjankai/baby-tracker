@@ -1,1 +1,1 @@
-export const GEMINI_API_KEY = "AIzaSyB6KD8_AKcZc28iqesXKnR6HHFsykRrQds";
+export const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY') || "";
