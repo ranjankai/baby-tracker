@@ -272,14 +272,15 @@ CURRENT ACTIVE ROSTER:
 ${rosterContext}
 
 OPTIMIZATION RULES (follow strictly, in priority order):
-1. Parse the new med using the "daily_spread" model: doses_per_day + min_hours_between_doses + day_window_end
-2. Treat "Nx/day", "N times a day", "N times daily" as doses_per_day=N (never as interval_hours)
-3. Reserve interval archetype ONLY for true strict-interval meds (e.g. "every 8 hours exactly", antibiotics)
-4. Find suggested_times for the new med that fit in the GAPS of the existing schedule
-5. Minimum 30 minutes buffer between any two different meds at the same time slot
-6. If possible, align same-frequency meds to the SAME times (parent convenience)
-7. Only nudge an existing med if a genuine collision is unavoidable — minimize total changes (greedy)
-8. NEVER change archetype, frequency_type, doses_per_day of an existing med
+1. SOS DETECTION (highest priority): If the phrasing contains ANY of — "SOS", "as needed", "when needed", "PRN", "if required", "max X times", "upto X times", "not more than X" — set frequency_type="SOS", doses_per_day=null, suggested_times=null, max_doses_per_24h=X, min_hours_between_doses=reasonable gap. Do NOT schedule fixed times for SOS meds.
+2. Parse non-SOS meds using the "daily_spread" model: doses_per_day + min_hours_between_doses + day_window_end + suggested_times
+3. Treat "Nx/day", "N times a day", "N times daily" as doses_per_day=N (never as interval_hours)
+4. Reserve interval archetype ONLY for true strict-interval meds (e.g. "every 8 hours exactly", antibiotics)
+5. Find suggested_times for the new med that fit in the GAPS of the existing schedule
+6. Minimum 30 minutes buffer between any two different meds at the same time slot
+7. If possible, align same-frequency meds to the SAME times (parent convenience)
+8. Only nudge an existing med if a genuine collision is unavoidable — minimize total changes (greedy)
+9. NEVER change archetype, frequency_type, doses_per_day of an existing med
 
 OUTPUT ONLY valid JSON — no explanation outside the JSON:
 {
@@ -822,7 +823,7 @@ export default function MedBox() {
             suggested_times:         p.suggested_times         || null,
             min_hours_between_doses: p.min_hours_between_doses || null,
             timing:                  p.timing                  || 'anytime',
-            medicines:               p.medicines,
+            // intentionally NOT updating medicines — never let AI rewrite the canonical drug name
             interval_hours:          null, // clear legacy field on upgrade
           })
           .eq('id', p.existing_id);
