@@ -42,7 +42,7 @@ function count24h(name, medEvents) {
   ).length;
 }
 
-// ── Min-gap check: has N hours elapsed since last dose of this med? ───────────
+// ── Min-gap helpers ───────────────────────────────────────────────────────────
 function minGapElapsed(name, medEvents, minHours) {
   if (!minHours || !name || !medEvents?.length) return true;
   const relevant = medEvents
@@ -71,17 +71,99 @@ function getTaperPhase(s) {
     cumDay += step.durationInDays;
     if (dayOffset < cumDay) return step;
   }
-  return s.taper_steps[s.taper_steps.length - 1]; // last phase (maintenance)
+  return s.taper_steps[s.taper_steps.length - 1];
 }
 
-// ── Due logic ─────────────────────────────────────────────────────────────────
-
+// ── Due logic helpers ─────────────────────────────────────────────────────────
 function isCapped(s, name, medEvents) {
-  const cap = s.max_doses_per_24h;
+  const cap = s.max_doses_per_24h || s.doses_per_day;
   if (!cap || !name) return false;
   return count24h(name, medEvents) >= cap;
 }
 
+// ── NEW: Dose-spreading within therapeutic window ─────────────────────────────
+// Clinical model: "N times a day" = distribute N doses across waking hours,
+// computing the ideal next-dose time dynamically from doses remaining + time left.
+
+function getWindowEnd(s) {
+  const [h, m] = (s.day_window_end || '22:00').split(':').map(Number);
+  const d = new Date(); d.setHours(h, m, 0, 0); return d;
+}
+
+function getLastDoseToday(name, medEvents) {
+  const dayStart = getDayStart();
+  const relevant = medEvents
+    .filter(e => e.notes?.toLowerCase() === name.toLowerCase() && new Date(e.start_time) >= dayStart)
+    .sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
+  return relevant.length ? new Date(relevant[0].start_time) : null;
+}
+
+function computeNextDoseTime(s, medEvents) {
+  const name = medName(s.medicines?.[0]);
+  if (!s.doses_per_day) return null;
+
+  const now          = new Date();
+  const windowEnd    = getWindowEnd(s);
+  const givenToday   = count24h(name, medEvents);
+  const dosesLeft    = s.doses_per_day - givenToday;
+
+  if (dosesLeft <= 0) return null; // all done today
+
+  const windowLeftHours = Math.max(0, (windowEnd - now) / 3_600_000);
+  const minGap          = s.min_hours_between_doses || 0;
+  // Spread remaining doses evenly across remaining window, respecting min gap
+  const idealSpacing    = dosesLeft > 0 ? windowLeftHours / dosesLeft : 0;
+  const spacingHours    = Math.max(minGap, idealSpacing);
+
+  const lastDose = getLastDoseToday(name, medEvents);
+  if (!lastDose) return now; // no dose today yet → due now
+
+  const nextDue = new Date(lastDose.getTime() + spacingHours * 3_600_000);
+  return nextDue > windowEnd ? windowEnd : nextDue;
+}
+
+function isDailySpreadDue(s, medEvents) {
+  const name = medName(s.medicines?.[0]);
+  if (!s.doses_per_day) return false;
+
+  const givenToday = count24h(name, medEvents);
+  if (givenToday >= s.doses_per_day) return false;
+
+  const now = new Date();
+  if (now > getWindowEnd(s)) return false; // past bedtime
+
+  // Enforce min gap from last dose before declaring due
+  if (!minGapElapsed(name, medEvents, s.min_hours_between_doses)) return false;
+
+  const nextDue = computeNextDoseTime(s, medEvents);
+  if (!nextDue) return false;
+  return now >= nextDue;
+}
+
+function hoursUntilDailySpread(s, medEvents) {
+  // Also respect min gap
+  const name    = medName(s.medicines?.[0]);
+  const minGapH = hoursUntilMinGap(name, medEvents, s.min_hours_between_doses);
+  const nextDue = computeNextDoseTime(s, medEvents);
+  if (!nextDue) return null;
+  const fromNextDue = Math.max(0, (nextDue - Date.now()) / 3_600_000);
+  return minGapH != null ? Math.max(minGapH, fromNextDue) : fromNextDue;
+}
+
+function nextDailySpreadLabel(s, medEvents) {
+  const name = medName(s.medicines?.[0]);
+  // If min gap hasn't elapsed, show that as next time
+  const minGapH = hoursUntilMinGap(name, medEvents, s.min_hours_between_doses);
+  if (minGapH != null && minGapH > 0) {
+    const t = new Date(Date.now() + minGapH * 3_600_000);
+    return t.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  }
+  const nextDue = computeNextDoseTime(s, medEvents);
+  if (!nextDue) return null;
+  return nextDue.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+// ── Legacy due logic (backward compat for old DB rows) ────────────────────────
 function getRotationDue(s, medEvents) {
   if (!s?.medicines) return null;
   const meds = s.medicines;
@@ -125,10 +207,9 @@ function intervalHoursUntil(s, medEvents) {
 function isTimeWindowDue(s, medEvents) {
   const now = new Date();
   let winStart, winEnd;
-
   if (!s?.window_start || !s.window_end) {
     winStart = new Date(now); winStart.setHours(0, 0, 0, 0);
-    winEnd = new Date(now); winEnd.setHours(23, 59, 59, 999);
+    winEnd   = new Date(now); winEnd.setHours(23, 59, 59, 999);
   } else {
     const cur = now.getHours() * 60 + now.getMinutes();
     const [sH, sM] = s.window_start.split(':').map(Number);
@@ -137,26 +218,16 @@ function isTimeWindowDue(s, medEvents) {
     winStart = new Date(now); winStart.setHours(sH, sM, 0, 0);
     winEnd   = new Date(now); winEnd.setHours(eH, eM, 0, 0);
   }
-
   return !(medEvents || []).some(e =>
     s.medicines.some(m => medName(m).toLowerCase() === e.notes?.toLowerCase()) &&
     new Date(e.start_time) >= winStart && new Date(e.start_time) <= winEnd
   );
 }
 
-function isSOSDue(s, name, medEvents) {
-  // SOS: always available unless daily cap hit or min gap not elapsed
-  if (isCapped(s, name, medEvents)) return false;
-  if (!minGapElapsed(name, medEvents, s.min_hours_between_doses)) return false;
-  return true;
-}
-
-// ── SPECIFIC_DAYS: is today one of the scheduled days? ───────────────────────
 function isSpecificDayDue(s, medEvents) {
   if (!s?.specific_days?.length) return false;
-  const todayISO = new Date().getDay() || 7; // JS 0=Sun → convert to ISO 1=Mon…7=Sun
+  const todayISO = new Date().getDay() || 7;
   if (!s.specific_days.includes(todayISO)) return false;
-  // Within today, treat like time_window or simply once-per-day
   const dayStart = getDayStart();
   return !(medEvents || []).some(e =>
     s.medicines.some(m => medName(m).toLowerCase() === e.notes?.toLowerCase()) &&
@@ -172,44 +243,81 @@ function archetypeLabel(s) {
   if (s.frequency_type === 'SPECIFIC_DAYS' && s.specific_days?.length)
     return s.specific_days.map(d => DAY_NAMES[d] || d).join(', ');
   if (s.archetype === 'rotation')    return 'Alternating';
+  if (s.doses_per_day)               return `${s.doses_per_day}×/day`;
   if (s.archetype === 'interval')    return s.interval_hours ? `Every ${s.interval_hours}h` : 'Daily';
   if (s.archetype === 'time_window') return (s.window_start && s.window_end) ? `${s.window_start}–${s.window_end}` : 'Daily';
   return 'Daily';
 }
 
-// ── NLP prompt ────────────────────────────────────────────────────────────────
-const NLP_PROMPT = (input) => `You are a pediatric prescription parser. Parse the following into structured JSON.
+// ── NLP Roster Prompt ─────────────────────────────────────────────────────────
+const NLP_ROSTER_PROMPT = (input, activeSchedules) => {
+  const rosterContext = activeSchedules.length === 0
+    ? 'No medications currently active.'
+    : activeSchedules.map(s => {
+        const names  = (s.medicines || []).map(m => medName(m)).join(' → ');
+        const sched  = s.doses_per_day
+          ? `${s.doses_per_day}x/day, min_gap ${s.min_hours_between_doses || 0}h, window_end ${s.day_window_end || '22:00'}`
+          : s.archetype === 'interval'    ? `every ${s.interval_hours}h`
+          : s.archetype === 'time_window' ? `${s.window_start}–${s.window_end}`
+          : s.frequency_type === 'SOS'    ? 'SOS'
+          : 'daily';
+        const times = s.suggested_times?.length ? `, at: [${s.suggested_times.join(', ')}]` : '';
+        return `  - id:${s.id} | ${names} | ${sched}${times}`;
+      }).join('\n');
 
-Input: "${input}"
+  return `You are a pediatric medication scheduler. Optimally schedule a new medication into an existing active roster using a greedy, minimal-disruption algorithm.
 
-Rules:
-- archetype: "rotation" = medicines alternate each dose | "interval" = fixed gap | "time_window" = once within a daily window | "sos" = as-needed
-- frequency_type: "DAILY" | "INTERVAL" | "SPECIFIC_DAYS" | "SOS"
-- specific_days uses ISO weekday numbers: 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun
-- For tapering/step-up regimens set isTaperingRegimen=true and fill taperSteps
-- Include dosage in the medicine name string (e.g. "Neopeptine 0.5ml")
+NEW MEDICATION:
+"${input}"
 
-Output ONLY valid JSON (no explanation):
+CURRENT ACTIVE ROSTER:
+${rosterContext}
+
+OPTIMIZATION RULES (follow strictly, in priority order):
+1. Parse the new med using the "daily_spread" model: doses_per_day + min_hours_between_doses + day_window_end
+2. Treat "Nx/day", "N times a day", "N times daily" as doses_per_day=N (never as interval_hours)
+3. Reserve interval archetype ONLY for true strict-interval meds (e.g. "every 8 hours exactly", antibiotics)
+4. Find suggested_times for the new med that fit in the GAPS of the existing schedule
+5. Minimum 30 minutes buffer between any two different meds at the same time slot
+6. If possible, align same-frequency meds to the SAME times (parent convenience)
+7. Only nudge an existing med if a genuine collision is unavoidable — minimize total changes (greedy)
+8. NEVER change archetype, frequency_type, doses_per_day of an existing med
+
+OUTPUT ONLY valid JSON — no explanation outside the JSON:
 {
-  "archetype": "rotation" | "interval" | "time_window" | "sos",
-  "frequency_type": "DAILY" | "INTERVAL" | "SPECIFIC_DAYS" | "SOS",
-  "medicines": [{"name": "MedicineName Dose Unit"}],
-  "interval_hours": null or number,
-  "window_start": null or "HH:MM",
-  "window_end": null or "HH:MM",
-  "specific_days": null or [1,4],
-  "preferred_times": null or ["08:00","20:00"],
-  "timing": "before" | "after" | "with" | "anytime",
-  "max_doses_per_24h": null or number,
-  "min_hours_between_doses": null or number,
-  "duration_days": null or number,
-  "is_tapering_regimen": false or true,
-  "taper_steps": null or [{"phaseOrder":1,"durationInDays":3,"doseValue":5,"doseUnit":"ml"}],
-  "confidence": "high" | "medium" | "low"
-}`;
+  "roster_plan": [
+    {
+      "existing_id": null,
+      "is_new": true,
+      "is_modified": false,
+      "change_reason": null,
+      "medicines": [{"name": "MedicineName Dose Unit"}],
+      "archetype": "daily_spread",
+      "frequency_type": "DAILY",
+      "doses_per_day": 2,
+      "min_hours_between_doses": 4,
+      "day_window_end": "22:00",
+      "suggested_times": ["09:00", "17:00"],
+      "timing": "after",
+      "max_doses_per_24h": null,
+      "duration_days": null,
+      "is_tapering_regimen": false,
+      "taper_steps": null,
+      "confidence": "high"
+    }
+  ],
+  "optimization_note": "One sentence summary of scheduling decisions",
+  "conflicts": []
+}
+
+Rules for existing meds in roster_plan:
+- Include ALL active meds (new + existing) in roster_plan
+- Unchanged existing meds: existing_id=their_id, is_new=false, is_modified=false, suggested_times=their current times
+- Nudged existing meds: is_modified=true, fill change_reason with why
+- specific_days: ISO weekday numbers 1=Mon…7=Sun`;
+};
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-
 function TaperBadge({ s }) {
   const phase = getTaperPhase(s);
   if (!phase) return null;
@@ -222,76 +330,190 @@ function TaperBadge({ s }) {
   );
 }
 
-// MedRow removed to group properly in the main render loop.
+// ── Roster Diff Editor ────────────────────────────────────────────────────────
+function RosterDiffEditor({ plan, nlpInput, onEdit, onConfirm }) {
+  const [editedPlan, setEditedPlan] = useState(
+    (plan.roster_plan || []).map((item, i) => ({ ...item, _idx: i }))
+  );
+  const [editKey, setEditKey]       = useState(null); // "rowIdx-timeIdx"
+  const [timeInput, setTimeInput]   = useState('');
 
-function ConfirmPreview({ p, nlpInput, onEdit, onConfirm }) {
-  const taperSteps = p.taper_steps;
+  const startEdit = (rowIdx, tIdx, val) => {
+    setEditKey(`${rowIdx}-${tIdx}`);
+    setTimeInput(val);
+  };
+
+  const commitEdit = () => {
+    if (!editKey) return;
+    const [ri, ti] = editKey.split('-').map(Number);
+    setEditedPlan(prev => prev.map((item, i) => {
+      if (i !== ri) return item;
+      const newTimes = [...(item.suggested_times || [])];
+      newTimes[ti] = timeInput;
+      return { ...item, suggested_times: newTimes };
+    }));
+    setEditKey(null);
+  };
+
+  const newItems  = editedPlan.filter(p => p.is_new);
+  const modItems  = editedPlan.filter(p => p.is_modified && !p.is_new);
+  const sameItems = editedPlan.filter(p => !p.is_new && !p.is_modified);
+
+  const renderRow = (item, rowIdx) => {
+    const names   = (item.medicines || []).map(m => medName(m)).join(' → ');
+    const isNew   = item.is_new;
+    const isMod   = item.is_modified;
+    const canEdit = isNew || isMod;
+    const bg      = isNew ? '#f0fdf4' : isMod ? '#fffbeb' : 'var(--bg-app)';
+    const border  = isNew ? '#86efac' : isMod ? '#fcd34d' : 'var(--border-soft)';
+    const badge   = isNew
+      ? <span style={{ fontSize: '10px', fontWeight: 700, color: '#15803d', background: '#dcfce7', borderRadius: '99px', padding: '2px 8px' }}>NEW ✨</span>
+      : isMod
+        ? <span style={{ fontSize: '10px', fontWeight: 700, color: '#92400e', background: '#fef3c7', borderRadius: '99px', padding: '2px 8px' }}>NUDGED</span>
+        : <span style={{ fontSize: '10px', color: 'var(--text-muted)', borderRadius: '99px', padding: '2px 8px' }}>Unchanged</span>;
+
+    return (
+      <div key={rowIdx} style={{
+        background: bg, border: `1.5px solid ${border}`,
+        borderRadius: '12px', padding: '12px 14px', marginBottom: '8px',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+          <div>
+            <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text-main)' }}>{names}</span>
+            {item.doses_per_day && (
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                {item.doses_per_day}×/day
+                {item.timing && item.timing !== 'anytime' ? ` · ${item.timing} feed` : ''}
+                {item.duration_days ? ` · ${item.duration_days}d` : ''}
+                {item.min_hours_between_doses ? ` · min ${item.min_hours_between_doses}h gap` : ''}
+              </span>
+            )}
+          </div>
+          {badge}
+        </div>
+
+        {/* Editable time pills */}
+        {(item.suggested_times?.length > 0) && (
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>Times:</span>
+            {item.suggested_times.map((t, tIdx) => {
+              const key = `${rowIdx}-${tIdx}`;
+              const isEditing = editKey === key;
+              return isEditing ? (
+                <input
+                  key={tIdx} type="time" value={timeInput}
+                  onChange={e => setTimeInput(e.target.value)}
+                  onBlur={commitEdit}
+                  onKeyDown={e => e.key === 'Enter' && commitEdit()}
+                  autoFocus
+                  style={{
+                    fontSize: '12px', fontWeight: 700, padding: '3px 8px',
+                    border: '1.5px solid var(--primary)', borderRadius: '8px',
+                    background: 'white', color: 'var(--primary)',
+                    fontFamily: 'var(--sans)', outline: 'none', width: '92px',
+                  }}
+                />
+              ) : (
+                <button
+                  key={tIdx}
+                  onClick={() => canEdit && startEdit(rowIdx, tIdx, t)}
+                  title={canEdit ? 'Tap to edit time' : undefined}
+                  style={{
+                    fontSize: '12px', fontWeight: 700, padding: '3px 10px',
+                    border: '1.5px solid var(--border-soft)', borderRadius: '8px',
+                    background: 'white', color: isNew ? '#15803d' : isMod ? '#92400e' : 'var(--text-main)',
+                    fontFamily: 'var(--sans)', cursor: canEdit ? 'pointer' : 'default',
+                    transition: 'border-color 0.15s',
+                  }}
+                >
+                  {t}{canEdit ? ' ✎' : ''}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Change reason */}
+        {item.change_reason && (
+          <div style={{
+            fontSize: '11px', color: '#92400e', marginTop: '8px', paddingTop: '8px',
+            borderTop: '1px dashed #fcd34d', lineHeight: 1.5,
+          }}>
+            ↳ {item.change_reason}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div style={{ background: 'var(--bg-app)', borderRadius: '14px', padding: '16px' }}>
-      <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
+    <div style={{ background: 'var(--bg-app)', borderRadius: '14px' }}>
+      <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
         You said: <em>"{nlpInput}"</em>
       </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
-        <div style={{ fontSize: '14px' }}>
-          <strong>Medicines:</strong>{' '}
-          {p.medicines?.map(m => medName(m)).join(' → ')}
+
+      {/* AI optimization note */}
+      {plan.optimization_note && (
+        <div style={{
+          fontSize: '12px', color: '#166534', background: '#f0fdf4',
+          borderRadius: '10px', padding: '10px 12px', marginBottom: '12px', lineHeight: 1.5,
+        }}>
+          🧠 {plan.optimization_note}
         </div>
-        <div style={{ fontSize: '14px' }}>
-          <strong>Type:</strong>{' '}
-          {p.frequency_type === 'SOS'            ? 'SOS / As needed' :
-           p.frequency_type === 'SPECIFIC_DAYS'  ? `Specific days: ${(p.specific_days || []).map(d => DAY_NAMES[d]).join(', ')}` :
-           p.archetype === 'rotation'            ? 'Alternating (one per dose)' :
-           p.archetype === 'interval'            ? `Every ${p.interval_hours}h` :
-           p.window_start                        ? `Window ${p.window_start}–${p.window_end}` :
-           'Daily'}
+      )}
+
+      {/* Conflict warnings */}
+      {plan.conflicts?.length > 0 && (
+        <div style={{
+          fontSize: '12px', color: '#92400e', background: '#fff7ed',
+          borderRadius: '10px', padding: '10px 12px', marginBottom: '12px', lineHeight: 1.5,
+        }}>
+          ⚠️ {plan.conflicts.join(' · ')}
         </div>
-        {p.timing && p.timing !== 'anytime' && (
-          <div style={{ fontSize: '14px' }}><strong>Timing:</strong> {p.timing} feed</div>
-        )}
-        {p.preferred_times?.length > 0 && (
-          <div style={{ fontSize: '14px' }}><strong>Times:</strong> {p.preferred_times.join(', ')}</div>
-        )}
-        {p.max_doses_per_24h && (
-          <div style={{ fontSize: '14px', color: '#b45309' }}>
-            <strong>Cap:</strong> max {p.max_doses_per_24h}/day
-          </div>
-        )}
-        {p.min_hours_between_doses && (
-          <div style={{ fontSize: '14px' }}>
-            <strong>Min gap:</strong> {p.min_hours_between_doses}h between doses
-          </div>
-        )}
-        {p.duration_days && (
-          <div style={{ fontSize: '14px', color: '#b45309', fontWeight: 600 }}>
-            <strong>Duration:</strong> {p.duration_days} days
-          </div>
-        )}
-        {p.is_tapering_regimen && taperSteps?.length > 0 && (
-          <div style={{ fontSize: '14px' }}>
-            <strong>Taper:</strong>
-            <div style={{ marginTop: '4px', paddingLeft: '8px', borderLeft: '2px solid var(--border-soft)' }}>
-              {taperSteps.map((step, i) => (
-                <div key={i} style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                  Phase {step.phaseOrder}: {step.doseValue}{step.doseUnit} × {step.durationInDays}d
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        <div style={{ fontSize: '12px', color: p.confidence === 'high' ? 'var(--secondary)' : '#b45309' }}>
-          Confidence: {p.confidence}
-        </div>
-      </div>
-      <div className="grid-2">
-        <button className="button-primary" style={{ background: '#eee', color: '#666' }} onClick={onEdit}>Edit</button>
-        <button className="button-primary" onClick={onConfirm}>Save ✓</button>
+      )}
+
+      {/* NEW meds */}
+      {newItems.length > 0 && (
+        <>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '6px' }}>Adding</div>
+          {newItems.map(item => renderRow(item, editedPlan.indexOf(item)))}
+        </>
+      )}
+
+      {/* Nudged existing meds */}
+      {modItems.length > 0 && (
+        <>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: '0.6px', margin: '12px 0 6px' }}>Adjusted</div>
+          {modItems.map(item => renderRow(item, editedPlan.indexOf(item)))}
+        </>
+      )}
+
+      {/* Untouched meds */}
+      {sameItems.length > 0 && (
+        <>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: '0.6px', margin: '12px 0 6px' }}>Unchanged</div>
+          {sameItems.map(item => renderRow(item, editedPlan.indexOf(item)))}
+        </>
+      )}
+
+      <div className="grid-2" style={{ marginTop: '16px' }}>
+        <button className="button-primary" style={{ background: '#eee', color: '#666' }} onClick={onEdit}>
+          ← Edit
+        </button>
+        <button className="button-primary" onClick={() => onConfirm(editedPlan)}>
+          Save All ✓
+        </button>
       </div>
     </div>
   );
 }
 
-function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedConfirm, parseError,
-                       onParse, onConfirm, onDelete, onClose, setParsedConfirm, setParseError }) {
+// ── Config Modal ──────────────────────────────────────────────────────────────
+function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedPlan, parseError,
+                       onParse, onConfirm, onDelete, onClose, setParsedPlan, setParseError }) {
   return (
     <div className="modal-overlay">
       <div className="modal-content">
@@ -300,6 +522,7 @@ function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedConfir
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '20px', color: 'var(--text-muted)' }}>✕</button>
         </div>
 
+        {/* Existing schedules list */}
         {schedules.length > 0 && (
           <div style={{ marginBottom: '20px' }}>
             {schedules.map(s => (
@@ -310,7 +533,9 @@ function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedConfir
                     {s.is_tapering_regimen && <TaperBadge s={s} />}
                   </div>
                   <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                    {archetypeLabel(s)}{s.timing && s.timing !== 'anytime' ? ` · ${s.timing} feed` : ''}
+                    {archetypeLabel(s)}
+                    {s.timing && s.timing !== 'anytime' ? ` · ${s.timing} feed` : ''}
+                    {s.suggested_times?.length ? ` · ${s.suggested_times.join(', ')}` : ''}
                     {s.max_doses_per_24h ? ` · max ${s.max_doses_per_24h}/day` : ''}
                     {s.expires_at && (
                       <span style={{ color: '#b45309', fontWeight: 600 }}>
@@ -327,13 +552,14 @@ function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedConfir
           </div>
         )}
 
-        {!parsedConfirm ? (
+        {/* Add new / edit roster */}
+        {!parsedPlan ? (
           <>
-            <span className="intensity-label">Add a new schedule</span>
+            <span className="intensity-label">Add a new medication</span>
             <textarea
               className="comment-textarea"
               rows={3}
-              placeholder={`"Alternate Colicaid and Neopeptine max 3/day each"\n"Brufen SOS max 2/day min 6h gap"\n"Prednisolone 5ml/day for 3 days then 2.5ml/day for 3 days"\n"Vitamin D3 0.5ml every night"`}
+              placeholder={`"Neopeptine 0.5ml twice a day after feeds for 3 days"\n"Brufen SOS max 2/day min 6h gap"\n"Prednisolone 5ml once daily for 3 days then 2.5ml for 3 days"\n"Vitamin D3 0.5ml every Monday and Thursday"`}
               value={nlpInput}
               onChange={e => { setNlpInput(e.target.value); setParseError(''); }}
               style={{ marginBottom: '10px', width: '100%' }}
@@ -341,15 +567,15 @@ function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedConfir
             {parseError && <p style={{ color: '#d32f2f', fontSize: '12px', margin: '0 0 10px' }}>{parseError}</p>}
             <button className="button-primary" onClick={onParse} disabled={isParsing || !nlpInput.trim()}>
               {isParsing
-                ? <><Loader size={14} style={{ marginRight: '6px', animation: 'spin 1s linear infinite' }} />Parsing...</>
-                : 'Parse →'}
+                ? <><Loader size={14} style={{ marginRight: '6px', animation: 'spin 1s linear infinite' }} />Optimising schedule…</>
+                : 'Schedule →'}
             </button>
           </>
         ) : (
-          <ConfirmPreview
-            p={parsedConfirm}
+          <RosterDiffEditor
+            plan={parsedPlan}
             nlpInput={nlpInput}
-            onEdit={() => setParsedConfirm(null)}
+            onEdit={() => setParsedPlan(null)}
             onConfirm={onConfirm}
           />
         )}
@@ -358,6 +584,7 @@ function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedConfir
   );
 }
 
+// ── Override Modal ────────────────────────────────────────────────────────────
 function OverrideModal({ override, onCancel, onConfirm }) {
   if (!override) return null;
   return (
@@ -379,21 +606,20 @@ function OverrideModal({ override, onCancel, onConfirm }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-
 export default function MedBox() {
-  const [schedules, setSchedules]         = useState([]);
-  const [medEvents, setMedEvents]         = useState([]);
-  const [loadingData, setLoadingData]     = useState(true);
-  const [isExpanded, setIsExpanded]       = useState(false);
+  const [schedules, setSchedules]     = useState([]);
+  const [medEvents, setMedEvents]     = useState([]);
+  const [loadingData, setLoadingData] = useState(true);
+  const [isExpanded, setIsExpanded]   = useState(false);
 
-  const [showConfig, setShowConfig]       = useState(false);
-  const [nlpInput, setNlpInput]           = useState('');
-  const [isParsing, setIsParsing]         = useState(false);
-  const [parsedConfirm, setParsedConfirm] = useState(null);
-  const [parseError, setParseError]       = useState('');
+  const [showConfig, setShowConfig]   = useState(false);
+  const [nlpInput, setNlpInput]       = useState('');
+  const [isParsing, setIsParsing]     = useState(false);
+  const [parsedPlan, setParsedPlan]   = useState(null);
+  const [parseError, setParseError]   = useState('');
 
-  const [override, setOverride]           = useState(null);
-  const [loggingMed, setLoggingMed]       = useState(null);
+  const [override, setOverride]       = useState(null);
+  const [loggingMed, setLoggingMed]   = useState(null);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -432,10 +658,10 @@ export default function MedBox() {
   try {
     if (loadingData) return null;
 
+    // ── Compute due status for each schedule ──────────────────────────────────
     const dues = schedules.map(s => {
       if (s.frequency_type === 'SOS') {
         const name = medName(s.medicines?.[0]);
-        // SOS is never "due", just available
         const gapLeft = hoursUntilMinGap(name, medEvents, s.min_hours_between_doses);
         return { s, dueMed: null, isDue: false, hoursUntil: gapLeft };
       }
@@ -447,6 +673,14 @@ export default function MedBox() {
         const dueMed = getRotationDue(s, medEvents);
         return { s, dueMed, isDue: dueMed !== null };
       }
+      // ── NEW: dose-spreading (daily_spread) ────────────────────────────────
+      if (s.doses_per_day) {
+        const isDue      = isDailySpreadDue(s, medEvents);
+        const hoursUntil = isDue ? null : hoursUntilDailySpread(s, medEvents);
+        const nextLabel  = !isDue ? nextDailySpreadLabel(s, medEvents) : null;
+        return { s, dueMed: medName(s.medicines?.[0]), isDue, hoursUntil, nextLabel };
+      }
+      // ── Legacy: strict interval ────────────────────────────────────────────
       if (s.archetype === 'interval') {
         const isDue = isIntervalDue(s, medEvents);
         return { s, dueMed: medName(s.medicines?.[0]), isDue, hoursUntil: isDue ? null : intervalHoursUntil(s, medEvents) };
@@ -456,6 +690,7 @@ export default function MedBox() {
       }
       return { s, dueMed: null, isDue: false };
     });
+
     const anyDue = dues.some(d => d.isDue);
 
     // ── Handlers ──────────────────────────────────────────────────────────────
@@ -480,40 +715,59 @@ export default function MedBox() {
 
     const handleParseNlp = async () => {
       if (!nlpInput.trim()) return;
-      setIsParsing(true); setParseError(''); setParsedConfirm(null);
+      setIsParsing(true); setParseError(''); setParsedPlan(null);
       try {
-        const raw = await callDualTierAI(NLP_PROMPT(nlpInput), 'insight', 'text/plain');
-        setParsedConfirm(extractLastJson(raw));
+        // Pass full active roster into the AI prompt
+        const raw = await callDualTierAI(NLP_ROSTER_PROMPT(nlpInput, schedules), 'insight', 'text/plain');
+        setParsedPlan(extractLastJson(raw));
       } catch (e) {
         console.error('NLP parse error:', e.message);
         setParseError(`Could not parse: ${e.message}`);
       } finally { setIsParsing(false); }
     };
 
-    const handleConfirmSchedule = async () => {
-      if (!parsedConfirm || !supabase) return;
-      const p = parsedConfirm;
-      const { error } = await supabase.from('med_schedules').insert([{
-        medicines:               p.medicines,
-        archetype:               p.archetype,
-        frequency_type:          p.frequency_type          || 'DAILY',
-        interval_hours:          p.interval_hours          || null,
-        window_start:            p.window_start            || null,
-        window_end:              p.window_end              || null,
-        specific_days:           p.specific_days           || null,
-        preferred_times:         p.preferred_times         || null,
-        timing:                  p.timing                  || 'anytime',
-        max_doses_per_24h:       p.max_doses_per_24h       || null,
-        min_hours_between_doses: p.min_hours_between_doses || null,
-        is_tapering_regimen:     p.is_tapering_regimen     || false,
-        taper_steps:             p.taper_steps             || null,
-        expires_at: p.duration_days
-          ? new Date(Date.now() + p.duration_days * 86_400_000).toISOString()
-          : null,
-        nlp_input: nlpInput,
-      }]);
-      if (error) { setParseError(`Save failed: ${error.message}`); return; }
-      setNlpInput(''); setParsedConfirm(null); setShowConfig(false);
+    const handleConfirmSchedule = async (editedRosterPlan) => {
+      if (!editedRosterPlan || !supabase) return;
+
+      const newItems = editedRosterPlan.filter(p => p.is_new);
+      const modItems = editedRosterPlan.filter(p => p.is_modified && !p.is_new && p.existing_id);
+
+      // ── Insert new meds ────────────────────────────────────────────────────
+      for (const p of newItems) {
+        const { error } = await supabase.from('med_schedules').insert([{
+          medicines:               p.medicines,
+          archetype:               p.archetype === 'daily_spread' ? 'interval' : p.archetype,
+          frequency_type:          p.frequency_type || 'DAILY',
+          doses_per_day:           p.doses_per_day           || null,
+          day_window_end:          p.day_window_end           || '22:00',
+          suggested_times:         p.suggested_times          || null,
+          interval_hours:          p.interval_hours           || null,
+          window_start:            p.window_start             || null,
+          window_end:              p.window_end               || null,
+          specific_days:           p.specific_days            || null,
+          preferred_times:         p.preferred_times          || null,
+          timing:                  p.timing                   || 'anytime',
+          max_doses_per_24h:       p.max_doses_per_24h        || null,
+          min_hours_between_doses: p.min_hours_between_doses  || null,
+          is_tapering_regimen:     p.is_tapering_regimen      || false,
+          taper_steps:             p.taper_steps              || null,
+          expires_at: p.duration_days
+            ? new Date(Date.now() + p.duration_days * 86_400_000).toISOString()
+            : null,
+          nlp_input: nlpInput,
+        }]);
+        if (error) { setParseError(`Save failed: ${error.message}`); return; }
+      }
+
+      // ── Update suggested_times for nudged existing meds ────────────────────
+      for (const p of modItems) {
+        const { error } = await supabase.from('med_schedules')
+          .update({ suggested_times: p.suggested_times })
+          .eq('id', p.existing_id);
+        if (error) { setParseError(`Update failed: ${error.message}`); return; }
+      }
+
+      setNlpInput(''); setParsedPlan(null); setShowConfig(false);
       fetchData();
     };
 
@@ -523,6 +777,7 @@ export default function MedBox() {
       fetchData();
     };
 
+    // ── Empty state ────────────────────────────────────────────────────────────
     if (schedules.length === 0) {
       return (
         <div className="card" style={{ padding: '14px 20px' }}>
@@ -537,15 +792,16 @@ export default function MedBox() {
           {showConfig && (
             <ConfigModal
               schedules={schedules} nlpInput={nlpInput} setNlpInput={setNlpInput}
-              isParsing={isParsing} parsedConfirm={parsedConfirm} parseError={parseError}
+              isParsing={isParsing} parsedPlan={parsedPlan} parseError={parseError}
               onParse={handleParseNlp} onConfirm={handleConfirmSchedule} onDelete={handleDelete}
-              onClose={() => setShowConfig(false)} setParsedConfirm={setParsedConfirm} setParseError={setParseError}
+              onClose={() => setShowConfig(false)} setParsedPlan={setParsedPlan} setParseError={setParseError}
             />
           )}
         </div>
       );
     }
 
+    // ── Main render ────────────────────────────────────────────────────────────
     return (
       <div className="card" style={{ padding: '16px 20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: (anyDue || isExpanded) ? '14px' : 0 }}>
@@ -583,17 +839,17 @@ export default function MedBox() {
               textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '4px' }}>
               {label}
             </div>
-            {groupDues.map(({ s, dueMed, isDue, hoursUntil }) => (
+            {groupDues.map(({ s, dueMed, isDue, hoursUntil, nextLabel }) => (
               (s.medicines || []).map(m => {
-                const name     = medName(m);
-                const n        = count24h(name, medEvents);
-                const cap      = s.max_doses_per_24h;
-                const capped   = cap != null && n >= cap;
-                const gapLeft  = s.frequency_type === 'SOS'
+                const name      = medName(m);
+                const n         = count24h(name, medEvents);
+                const cap       = s.max_doses_per_24h || s.doses_per_day;
+                const capped    = cap != null && n >= cap;
+                const gapLeft   = s.frequency_type === 'SOS'
                   ? hoursUntilMinGap(name, medEvents, s.min_hours_between_doses)
                   : null;
-                const gapBlock = gapLeft != null && gapLeft > 0;
-                const disabled = capped || gapBlock;
+                const gapBlock  = gapLeft != null && gapLeft > 0;
+                const disabled  = capped || gapBlock;
                 const isThisDue = isDue && name && name.toLowerCase() === dueMed?.toLowerCase();
                 const isLogging = loggingMed === name;
 
@@ -626,10 +882,14 @@ export default function MedBox() {
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', paddingLeft: '24px', display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        <span>({n}{cap ? `/${cap}${s.frequency_type === 'SOS' ? ' max' : ''}` : ''} today)</span>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', paddingLeft: '24px', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span>({n}{cap ? `/${cap}` : ''} today)</span>
                         {s.timing && s.timing !== 'anytime' ? <span>· {s.timing} feed</span> : null}
-                        {s.preferred_times?.length ? <span>· {s.preferred_times.join(', ')}</span> : null}
+                        {s.suggested_times?.length ? <span>· {s.suggested_times.join(', ')}</span> : null}
+                        {/* Smart next-dose suggestion */}
+                        {!isDue && nextLabel ? (
+                          <span style={{ color: 'var(--secondary)', fontWeight: 600 }}>· next ~{nextLabel}</span>
+                        ) : null}
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
@@ -646,7 +906,7 @@ export default function MedBox() {
                         <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)',
                           background: 'var(--primary-light)', borderRadius: '99px', padding: '2px 8px' }}>DUE</span>
                       )}
-                      {!isDue && s.archetype === 'interval' && hoursUntil != null && !disabled && (
+                      {!isDue && !nextLabel && hoursUntil != null && !disabled && (
                         <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>due in {hoursUntil.toFixed(1)}h</span>
                       )}
                       {isLogging
@@ -664,9 +924,9 @@ export default function MedBox() {
         {showConfig && (
           <ConfigModal
             schedules={schedules} nlpInput={nlpInput} setNlpInput={setNlpInput}
-            isParsing={isParsing} parsedConfirm={parsedConfirm} parseError={parseError}
+            isParsing={isParsing} parsedPlan={parsedPlan} parseError={parseError}
             onParse={handleParseNlp} onConfirm={handleConfirmSchedule} onDelete={handleDelete}
-            onClose={() => setShowConfig(false)} setParsedConfirm={setParsedConfirm} setParseError={setParseError}
+            onClose={() => setShowConfig(false)} setParsedPlan={setParsedPlan} setParseError={setParseError}
           />
         )}
         {override && (
