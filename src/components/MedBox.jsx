@@ -98,70 +98,51 @@ function getLastDoseToday(name, medEvents) {
   return relevant.length ? new Date(relevant[0].start_time) : null;
 }
 
-function computeNextDoseTime(s, medEvents) {
-  const name = medName(s.medicines?.[0]);
-  if (!s.doses_per_day) return null;
-
-  const now          = new Date();
-  const windowEnd    = getWindowEnd(s);
-  const givenToday   = count24h(name, medEvents);
-  const dosesLeft    = s.doses_per_day - givenToday;
-
-  if (dosesLeft <= 0) return null; // all done today
-
-  const windowLeftHours = Math.max(0, (windowEnd - now) / 3_600_000);
-  const minGap          = s.min_hours_between_doses || 0;
-  // Spread remaining doses evenly across remaining window, respecting min gap
-  const idealSpacing    = dosesLeft > 0 ? windowLeftHours / dosesLeft : 0;
-  const spacingHours    = Math.max(minGap, idealSpacing);
-
-  const lastDose = getLastDoseToday(name, medEvents);
-  if (!lastDose) return now; // no dose today yet → due now
-
-  const nextDue = new Date(lastDose.getTime() + spacingHours * 3_600_000);
-  return nextDue > windowEnd ? windowEnd : nextDue;
+function getTargetTimeDate(targetTimeStr) {
+  if (!targetTimeStr) return null;
+  const [h, m] = targetTimeStr.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d;
 }
 
-function isDailySpreadDue(s, medEvents) {
+function getNextSuggestedTime(s, medEvents) {
+  const name = medName(s.medicines?.[0]);
+  if (!s.doses_per_day) return null;
+  
+  const givenToday = count24h(name, medEvents);
+  if (givenToday >= s.doses_per_day) return null;
+  
+  const times = s.suggested_times || [];
+  let targetTimeStr = times[givenToday];
+  
+  let targetDate = getTargetTimeDate(targetTimeStr);
+  if (!targetDate) {
+    targetDate = new Date(); // fallback to now if missing suggested time
+  }
+  
+  // Also enforce min_gap from last dose
+  const lastDose = getLastDoseToday(name, medEvents);
+  if (lastDose && s.min_hours_between_doses) {
+    const minGapDate = new Date(lastDose.getTime() + s.min_hours_between_doses * 3_600_000);
+    if (minGapDate > targetDate) return minGapDate;
+  }
+  return targetDate;
+}
+
+function isScheduledDue(s, medEvents) {
   const name = medName(s.medicines?.[0]);
   if (!s.doses_per_day) return false;
 
   const givenToday = count24h(name, medEvents);
   if (givenToday >= s.doses_per_day) return false;
 
-  const now = new Date();
-  if (now > getWindowEnd(s)) return false; // past bedtime
-
-  // Enforce min gap from last dose before declaring due
-  if (!minGapElapsed(name, medEvents, s.min_hours_between_doses)) return false;
-
-  const nextDue = computeNextDoseTime(s, medEvents);
-  if (!nextDue) return false;
-  return now >= nextDue;
+  const nextDue = getNextSuggestedTime(s, medEvents);
+  if (!nextDue) return true; // fallback
+  return new Date() >= nextDue;
 }
 
-function hoursUntilDailySpread(s, medEvents) {
-  // Also respect min gap
-  const name    = medName(s.medicines?.[0]);
-  const minGapH = hoursUntilMinGap(name, medEvents, s.min_hours_between_doses);
-  const nextDue = computeNextDoseTime(s, medEvents);
-  if (!nextDue) return null;
-  const fromNextDue = Math.max(0, (nextDue - Date.now()) / 3_600_000);
-  return minGapH != null ? Math.max(minGapH, fromNextDue) : fromNextDue;
-}
 
-function nextDailySpreadLabel(s, medEvents) {
-  const name = medName(s.medicines?.[0]);
-  // If min gap hasn't elapsed, show that as next time
-  const minGapH = hoursUntilMinGap(name, medEvents, s.min_hours_between_doses);
-  if (minGapH != null && minGapH > 0) {
-    const t = new Date(Date.now() + minGapH * 3_600_000);
-    return t.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-  }
-  const nextDue = computeNextDoseTime(s, medEvents);
-  if (!nextDue) return null;
-  return nextDue.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-}
 
 // ── Legacy due logic (backward compat for old DB rows) ────────────────────────
 function getRotationDue(s, medEvents) {
@@ -243,7 +224,7 @@ function archetypeLabel(s) {
   if (s.frequency_type === 'SPECIFIC_DAYS' && s.specific_days?.length)
     return s.specific_days.map(d => DAY_NAMES[d] || d).join(', ');
   if (s.archetype === 'rotation') return 'Alternating';
-  if (s.doses_per_day) return `${s.doses_per_day}×/day`;
+  if (s.doses_per_day) return 'Daily';
   return 'Daily';
 }
 
@@ -724,10 +705,8 @@ export default function MedBox() {
       }
       // ── Daily spread (all upgraded meds — single code path) ───────────────
       if (s.doses_per_day) {
-        const isDue      = isDailySpreadDue(s, medEvents);
-        const hoursUntil = isDue ? null : hoursUntilDailySpread(s, medEvents);
-        const nextLabel  = !isDue ? nextDailySpreadLabel(s, medEvents) : null;
-        return { s, dueMed: medName(s.medicines?.[0]), isDue, hoursUntil, nextLabel };
+        const isDue = isScheduledDue(s, medEvents);
+        return { s, dueMed: medName(s.medicines?.[0]), isDue };
       }
       // Fallback for any un-migrated rows (should not exist after SQL migration)
       return { s, dueMed: null, isDue: false };
@@ -902,7 +881,7 @@ export default function MedBox() {
               textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '4px' }}>
               {label}
             </div>
-            {groupDues.map(({ s, dueMed, isDue, hoursUntil, nextLabel }) => (
+            {groupDues.map(({ s, dueMed, isDue }) => (
               (s.medicines || []).map(m => {
                 const name      = medName(m);
                 const n         = count24h(name, medEvents);
@@ -945,15 +924,6 @@ export default function MedBox() {
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', paddingLeft: '24px', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span>({n}{cap ? `/${cap}` : ''} today)</span>
-                        {s.timing && s.timing !== 'anytime' ? <span>· {s.timing} feed</span> : null}
-                        {s.suggested_times?.length ? <span>· {s.suggested_times.join(', ')}</span> : null}
-                        {/* Smart next-dose suggestion */}
-                        {!isDue && nextLabel ? (
-                          <span style={{ color: 'var(--secondary)', fontWeight: 600 }}>· next ~{nextLabel}</span>
-                        ) : null}
-                      </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                       {capped && (
@@ -968,9 +938,6 @@ export default function MedBox() {
                       {isThisDue && !disabled && (
                         <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)',
                           background: 'var(--primary-light)', borderRadius: '99px', padding: '2px 8px' }}>DUE</span>
-                      )}
-                      {!isDue && !nextLabel && hoursUntil != null && !disabled && (
-                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>due in {hoursUntil.toFixed(1)}h</span>
                       )}
                       {isLogging
                         ? <Loader size={14} style={{ color: 'var(--primary)', animation: 'spin 1s linear infinite' }} />
