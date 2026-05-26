@@ -242,10 +242,8 @@ function archetypeLabel(s) {
   if (s.frequency_type === 'SOS') return 'SOS / As needed';
   if (s.frequency_type === 'SPECIFIC_DAYS' && s.specific_days?.length)
     return s.specific_days.map(d => DAY_NAMES[d] || d).join(', ');
-  if (s.archetype === 'rotation')    return 'Alternating';
-  if (s.doses_per_day)               return `${s.doses_per_day}×/day`;
-  if (s.archetype === 'interval')    return s.interval_hours ? `Every ${s.interval_hours}h` : 'Daily';
-  if (s.archetype === 'time_window') return (s.window_start && s.window_end) ? `${s.window_start}–${s.window_end}` : 'Daily';
+  if (s.archetype === 'rotation') return 'Alternating';
+  if (s.doses_per_day) return `${s.doses_per_day}×/day`;
   return 'Daily';
 }
 
@@ -315,6 +313,56 @@ Rules for existing meds in roster_plan:
 - Unchanged existing meds: existing_id=their_id, is_new=false, is_modified=false, suggested_times=their current times
 - Nudged existing meds: is_modified=true, fill change_reason with why
 - specific_days: ISO weekday numbers 1=Mon…7=Sun`;
+};
+
+// ── NLP Upgrade Prompt (re-optimises the entire existing roster) ──────────────
+const NLP_UPGRADE_PROMPT = (activeSchedules) => {
+  const roster = activeSchedules.map(s => {
+    const names = (s.medicines || []).map(m => medName(m)).join(' → ');
+    const src   = s.nlp_input ? `"${s.nlp_input}"` : `${names} (no original text)`;
+    return `  - id:${s.id} | ${src} | current: archetype=${s.archetype}, interval_hours=${s.interval_hours ?? 'n/a'}, doses_per_day=${s.doses_per_day ?? 'n/a'}`;
+  }).join('\n');
+
+  return `You are upgrading an existing pediatric medication roster to a new smart scheduling model.
+
+EXISTING ROSTER:
+${roster}
+
+TASK:
+1. Convert EVERY medication above to the "daily_spread" model: doses_per_day + min_hours_between_doses + day_window_end + suggested_times
+2. Holistically distribute all doses across the waking day 07:00–22:00 with no conflicts
+3. Minimum 30 minutes gap between different meds at same time slot
+4. Align same-frequency meds to same times where possible (parent convenience)
+5. Use the original prescription text (nlp_input) as ground truth for dose count and frequency
+
+Return ALL meds as is_modified=true in roster_plan.
+
+OUTPUT ONLY valid JSON:
+{
+  "roster_plan": [
+    {
+      "existing_id": 123,
+      "is_new": false,
+      "is_modified": true,
+      "change_reason": "Upgraded from interval_hours:12 to 2x/day daily_spread model",
+      "medicines": [{"name": "MedicineName Dose Unit"}],
+      "archetype": "daily_spread",
+      "frequency_type": "DAILY",
+      "doses_per_day": 2,
+      "min_hours_between_doses": 4,
+      "day_window_end": "22:00",
+      "suggested_times": ["08:00", "20:00"],
+      "timing": "after",
+      "max_doses_per_24h": null,
+      "duration_days": null,
+      "is_tapering_regimen": false,
+      "taper_steps": null,
+      "confidence": "high"
+    }
+  ],
+  "optimization_note": "One sentence summary of upgrade decisions",
+  "conflicts": []
+}`;
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -513,7 +561,7 @@ function RosterDiffEditor({ plan, nlpInput, onEdit, onConfirm }) {
 
 // ── Config Modal ──────────────────────────────────────────────────────────────
 function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedPlan, parseError,
-                       onParse, onConfirm, onDelete, onClose, setParsedPlan, setParseError }) {
+                       onParse, onUpgrade, onConfirm, onDelete, onClose, setParsedPlan, setParseError }) {
   return (
     <div className="modal-overlay">
       <div className="modal-content">
@@ -570,6 +618,23 @@ function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedPlan, 
                 ? <><Loader size={14} style={{ marginRight: '6px', animation: 'spin 1s linear infinite' }} />Optimising schedule…</>
                 : 'Schedule →'}
             </button>
+            {/* Re-optimise entire existing roster */}
+            {schedules.length > 0 && (
+              <button
+                onClick={onUpgrade}
+                disabled={isParsing}
+                style={{
+                  marginTop: '10px', width: '100%', background: 'transparent',
+                  border: '1.5px dashed #86efac', borderRadius: '10px',
+                  padding: '10px', cursor: isParsing ? 'not-allowed' : 'pointer',
+                  color: '#15803d', fontFamily: 'var(--sans)', fontSize: '13px', fontWeight: 600,
+                }}
+              >
+                {isParsing
+                  ? <><Loader size={13} style={{ marginRight: '6px', animation: 'spin 1s linear infinite' }} />Upgrading roster…</>
+                  : '✦ Re-optimise entire existing roster'}
+              </button>
+            )}
           </>
         ) : (
           <RosterDiffEditor
@@ -673,21 +738,14 @@ export default function MedBox() {
         const dueMed = getRotationDue(s, medEvents);
         return { s, dueMed, isDue: dueMed !== null };
       }
-      // ── NEW: dose-spreading (daily_spread) ────────────────────────────────
+      // ── Daily spread (all upgraded meds — single code path) ───────────────
       if (s.doses_per_day) {
         const isDue      = isDailySpreadDue(s, medEvents);
         const hoursUntil = isDue ? null : hoursUntilDailySpread(s, medEvents);
         const nextLabel  = !isDue ? nextDailySpreadLabel(s, medEvents) : null;
         return { s, dueMed: medName(s.medicines?.[0]), isDue, hoursUntil, nextLabel };
       }
-      // ── Legacy: strict interval ────────────────────────────────────────────
-      if (s.archetype === 'interval') {
-        const isDue = isIntervalDue(s, medEvents);
-        return { s, dueMed: medName(s.medicines?.[0]), isDue, hoursUntil: isDue ? null : intervalHoursUntil(s, medEvents) };
-      }
-      if (s.archetype === 'time_window') {
-        return { s, dueMed: medName(s.medicines?.[0]), isDue: isTimeWindowDue(s, medEvents) };
-      }
+      // Fallback for any un-migrated rows (should not exist after SQL migration)
       return { s, dueMed: null, isDue: false };
     });
 
@@ -726,31 +784,44 @@ export default function MedBox() {
       } finally { setIsParsing(false); }
     };
 
+    const handleUpgradeRoster = async () => {
+      if (!schedules.length) return;
+      setIsParsing(true); setParseError(''); setParsedPlan(null);
+      try {
+        const raw = await callDualTierAI(NLP_UPGRADE_PROMPT(schedules), 'insight', 'text/plain');
+        setParsedPlan(extractLastJson(raw));
+      } catch (e) {
+        console.error('Upgrade parse error:', e.message);
+        setParseError(`Could not upgrade: ${e.message}`);
+      } finally { setIsParsing(false); }
+    };
+
     const handleConfirmSchedule = async (editedRosterPlan) => {
       if (!editedRosterPlan || !supabase) return;
 
       const newItems = editedRosterPlan.filter(p => p.is_new);
+      // All modified items — includes both nudged (add-new flow) and full upgrades
       const modItems = editedRosterPlan.filter(p => p.is_modified && !p.is_new && p.existing_id);
 
       // ── Insert new meds ────────────────────────────────────────────────────
       for (const p of newItems) {
         const { error } = await supabase.from('med_schedules').insert([{
           medicines:               p.medicines,
-          archetype:               p.archetype === 'daily_spread' ? 'interval' : p.archetype,
-          frequency_type:          p.frequency_type || 'DAILY',
+          archetype:               'interval', // daily_spread stored as interval for DB compat
+          frequency_type:          p.frequency_type          || 'DAILY',
           doses_per_day:           p.doses_per_day           || null,
-          day_window_end:          p.day_window_end           || '22:00',
-          suggested_times:         p.suggested_times          || null,
-          interval_hours:          p.interval_hours           || null,
-          window_start:            p.window_start             || null,
-          window_end:              p.window_end               || null,
-          specific_days:           p.specific_days            || null,
-          preferred_times:         p.preferred_times          || null,
-          timing:                  p.timing                   || 'anytime',
-          max_doses_per_24h:       p.max_doses_per_24h        || null,
-          min_hours_between_doses: p.min_hours_between_doses  || null,
-          is_tapering_regimen:     p.is_tapering_regimen      || false,
-          taper_steps:             p.taper_steps              || null,
+          day_window_end:          p.day_window_end          || '22:00',
+          suggested_times:         p.suggested_times         || null,
+          interval_hours:          null, // no longer used for daily_spread meds
+          window_start:            p.window_start            || null,
+          window_end:              p.window_end              || null,
+          specific_days:           p.specific_days           || null,
+          preferred_times:         p.preferred_times         || null,
+          timing:                  p.timing                  || 'anytime',
+          max_doses_per_24h:       p.max_doses_per_24h       || null,
+          min_hours_between_doses: p.min_hours_between_doses || null,
+          is_tapering_regimen:     p.is_tapering_regimen     || false,
+          taper_steps:             p.taper_steps             || null,
           expires_at: p.duration_days
             ? new Date(Date.now() + p.duration_days * 86_400_000).toISOString()
             : null,
@@ -759,10 +830,18 @@ export default function MedBox() {
         if (error) { setParseError(`Save failed: ${error.message}`); return; }
       }
 
-      // ── Update suggested_times for nudged existing meds ────────────────────
+      // ── Full field update for modified/upgraded existing meds ──────────────
       for (const p of modItems) {
         const { error } = await supabase.from('med_schedules')
-          .update({ suggested_times: p.suggested_times })
+          .update({
+            doses_per_day:           p.doses_per_day           || null,
+            day_window_end:          p.day_window_end          || '22:00',
+            suggested_times:         p.suggested_times         || null,
+            min_hours_between_doses: p.min_hours_between_doses || null,
+            timing:                  p.timing                  || 'anytime',
+            medicines:               p.medicines,
+            interval_hours:          null, // clear legacy field on upgrade
+          })
           .eq('id', p.existing_id);
         if (error) { setParseError(`Update failed: ${error.message}`); return; }
       }
@@ -793,7 +872,7 @@ export default function MedBox() {
             <ConfigModal
               schedules={schedules} nlpInput={nlpInput} setNlpInput={setNlpInput}
               isParsing={isParsing} parsedPlan={parsedPlan} parseError={parseError}
-              onParse={handleParseNlp} onConfirm={handleConfirmSchedule} onDelete={handleDelete}
+              onParse={handleParseNlp} onUpgrade={handleUpgradeRoster} onConfirm={handleConfirmSchedule} onDelete={handleDelete}
               onClose={() => setShowConfig(false)} setParsedPlan={setParsedPlan} setParseError={setParseError}
             />
           )}
@@ -925,7 +1004,7 @@ export default function MedBox() {
           <ConfigModal
             schedules={schedules} nlpInput={nlpInput} setNlpInput={setNlpInput}
             isParsing={isParsing} parsedPlan={parsedPlan} parseError={parseError}
-            onParse={handleParseNlp} onConfirm={handleConfirmSchedule} onDelete={handleDelete}
+            onParse={handleParseNlp} onUpgrade={handleUpgradeRoster} onConfirm={handleConfirmSchedule} onDelete={handleDelete}
             onClose={() => setShowConfig(false)} setParsedPlan={setParsedPlan} setParseError={setParseError}
           />
         )}
