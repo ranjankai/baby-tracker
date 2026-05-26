@@ -92,6 +92,7 @@ export function BabyProvider({ children }) {
         const stats = {
           totalDiapers: diaperRes.count || 0,
           firstEventTime: firstRes.data?.[0]?.start_time || null,
+          weightLogs: weightRes.data || [],
         };
 
         if (recentEvents) {

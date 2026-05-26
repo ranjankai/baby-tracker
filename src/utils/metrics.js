@@ -86,17 +86,31 @@ export function getMetrics(events, allTimeStats = null) {
     avgDiapersPerDay = Math.round(totalDiapers / effectiveDays).toString();
   }
 
+  const weightLogs = allTimeStats?.weightLogs;
+  const latestWeight = (() => {
+    if (weightLogs && weightLogs.length > 0) {
+      return weightLogs[weightLogs.length - 1]?.weight_kg || null;
+    }
+    return sorted.find(e => e.type === 'weight')?.weight_kg || null;
+  })();
+
+  const weightTrend = (() => {
+    if (weightLogs && weightLogs.length > 0) {
+      if (weightLogs.length < 2) return 0;
+      return (parseFloat(weightLogs[weightLogs.length - 1].weight_kg) - parseFloat(weightLogs[0].weight_kg)).toFixed(2);
+    }
+    const weights = sorted.filter(e => e.type === 'weight');
+    if (weights.length < 2) return 0;
+    return (parseFloat(weights[0].weight_kg) - parseFloat(weights[weights.length - 1].weight_kg)).toFixed(2);
+  })();
+
   return {
     lastFeed, lastPee, lastPoop,
     lastFeedRaw, lastPeeRaw, lastPoopRaw,
     feedsToday, peesToday, poopsToday, hoursElapsed,
     totalDiapers, avgDiapersPerDay,
     spitUps24h, spitUpsMajor, spitUpsMinor,
-    latestWeight: sorted.find(e => e.type === 'weight')?.weight_kg || null,
-    weightTrend: (() => {
-      const weights = sorted.filter(e => e.type === 'weight');
-      if (weights.length < 2) return 0;
-      return (parseFloat(weights[0].weight_kg) - parseFloat(weights[weights.length - 1].weight_kg)).toFixed(2);
-    })()
+    latestWeight,
+    weightTrend
   };
 }
