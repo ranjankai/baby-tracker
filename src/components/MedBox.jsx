@@ -561,7 +561,7 @@ function RosterDiffEditor({ plan, nlpInput, onEdit, onConfirm }) {
 
 // ── Config Modal ──────────────────────────────────────────────────────────────
 function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedPlan, parseError,
-                       onParse, onUpgrade, onConfirm, onDelete, onClose, setParsedPlan, setParseError }) {
+                       onParse, onConfirm, onDelete, onClose, setParsedPlan, setParseError }) {
   return (
     <div className="modal-overlay">
       <div className="modal-content">
@@ -618,23 +618,6 @@ function ConfigModal({ schedules, nlpInput, setNlpInput, isParsing, parsedPlan, 
                 ? <><Loader size={14} style={{ marginRight: '6px', animation: 'spin 1s linear infinite' }} />Optimising schedule…</>
                 : 'Schedule →'}
             </button>
-            {/* Re-optimise entire existing roster */}
-            {schedules.length > 0 && (
-              <button
-                onClick={onUpgrade}
-                disabled={isParsing}
-                style={{
-                  marginTop: '10px', width: '100%', background: 'transparent',
-                  border: '1.5px dashed #86efac', borderRadius: '10px',
-                  padding: '10px', cursor: isParsing ? 'not-allowed' : 'pointer',
-                  color: '#15803d', fontFamily: 'var(--sans)', fontSize: '13px', fontWeight: 600,
-                }}
-              >
-                {isParsing
-                  ? <><Loader size={13} style={{ marginRight: '6px', animation: 'spin 1s linear infinite' }} />Upgrading roster…</>
-                  : '✦ Re-optimise entire existing roster'}
-              </button>
-            )}
           </>
         ) : (
           <RosterDiffEditor
@@ -872,7 +855,7 @@ export default function MedBox() {
             <ConfigModal
               schedules={schedules} nlpInput={nlpInput} setNlpInput={setNlpInput}
               isParsing={isParsing} parsedPlan={parsedPlan} parseError={parseError}
-              onParse={handleParseNlp} onUpgrade={handleUpgradeRoster} onConfirm={handleConfirmSchedule} onDelete={handleDelete}
+              onParse={handleParseNlp} onConfirm={handleConfirmSchedule} onDelete={handleDelete}
               onClose={() => setShowConfig(false)} setParsedPlan={setParsedPlan} setParseError={setParseError}
             />
           )}
@@ -1004,7 +987,7 @@ export default function MedBox() {
           <ConfigModal
             schedules={schedules} nlpInput={nlpInput} setNlpInput={setNlpInput}
             isParsing={isParsing} parsedPlan={parsedPlan} parseError={parseError}
-            onParse={handleParseNlp} onUpgrade={handleUpgradeRoster} onConfirm={handleConfirmSchedule} onDelete={handleDelete}
+            onParse={handleParseNlp} onConfirm={handleConfirmSchedule} onDelete={handleDelete}
             onClose={() => setShowConfig(false)} setParsedPlan={setParsedPlan} setParseError={setParseError}
           />
         )}
