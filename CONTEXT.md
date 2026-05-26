@@ -96,9 +96,12 @@ An AI-native, mobile-first baby tracker that transitions from a simple logger to
   - Logic: `move_to_trash` and `restore_from_trash` RPCs.
 - [DONE] **14-05-2026**: Implemented end-to-end weight tracking with growth trends and Sparkline visualization.
 - [DONE] **14-05-2026**: Implemented medicine expiration tracking with AI duration parsing and dashboard countdowns.
+- [DONE] **26-05-26**: Fixed disappearing Weight card by fetching latest weight and trend from full historical database logs rather than the limited 100-event array.
+- [DONE] **26-05-26**: Plumbed AI weight insights to the Weight card and updated the `generate-strip-insights` Edge Function to query `weight_kg` and output a `"weight"` insight key in its micro-insights schema.
+- [DONE] **26-05-26**: Added Section IX (First Time Right - FTR Protocol) to global rules and addressed minor MECE gaps to enforce rigorous multi-layer feature audit verification.
 
 ## 🐛 Open Bugs
 - None currently known.
 
 ---
-*Last Updated: 14-05-2026 (Weight tracking, Medicine expiration)*
+*Last Updated: 26-05-26 (Weight card fixes, AI weight insights, FTR protocol)*
