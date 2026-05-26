@@ -125,6 +125,11 @@ export default function SummaryCards() {
             'Stable'
           ) : 'No logs'}
         </div>
+        {aiInsights?.micro?.weight && (
+          <div style={{ fontSize: '10px', color: 'var(--primary)', marginTop: '6px', opacity: 0.8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+            <MousePointer2 size={10} /> {aiInsights.micro.weight}
+          </div>
+        )}
       </div>
 
       </div>

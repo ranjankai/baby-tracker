@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
 
     const { data: rawLogs } = await supabase
       .from('baby_events')
-      .select('type, start_time, amount_ml, pee_amount, poop_amount, intensity, notes')
+      .select('type, start_time, amount_ml, pee_amount, poop_amount, intensity, notes, weight_kg')
       .order('start_time', { ascending: false })
       .limit(100);
 
@@ -134,6 +134,7 @@ Deno.serve(async (req) => {
           "pee": "Short 4-5 word status",
           "poop": "Short 4-5 word status",
           "spit_up": "Short 4-5 word status",
+          "weight": "Short 4-5 word status on growth trend",
           "stats": "Short 4-5 word status"
         }
       }
