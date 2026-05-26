@@ -924,6 +924,11 @@ export default function MedBox() {
                           </span>
                         )}
                       </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', paddingLeft: '24px', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span>({n}{cap ? `/${cap}` : ''} today)</span>
+                        {s.timing && s.timing !== 'anytime' ? <span>· {s.timing} feed</span> : null}
+                        {s.suggested_times?.length ? <span>· {s.suggested_times.join(', ')}</span> : null}
+                      </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                       {capped && (
