@@ -102,9 +102,10 @@ An AI-native, mobile-first baby tracker that transitions from a simple logger to
 - [DONE] **27-05-26**: Added Spit-up intensity selection to the Edit Activity modal, allowing fluid editing of minor/major spit ups.
 - [DONE] **27-05-26**: Converted all discrete button grids to premium continuous segmented sliding controls (segmented toggles) with dynamic active background indicator transitions (in Edit Modal and Quick Log panels).
 - [DONE] **27-05-26**: Implemented the Smart Log Exporter featuring a breakthrough dynamic sliding-window date selector (effortless single date defaulting + dynamic range window extensions), clipboard copier for Doctor/ChatGPT formats, and full clinical print-to-PDF stylesheets.
+- [DONE] **27-05-26**: Upgraded the main dashboard date filter chip to support dynamic "From → To" date range filtering, opening a premium interactive bottom-sheet modal using our signature sliding-window date selector (effortless single date defaulting + dynamic range window extensions).
 
 ## 🐛 Open Bugs
 - None currently known.
 
 ---
-*Last Updated: 27-05-26 (Log exporter, segmented controls, spit-up edit)*
+*Last Updated: 27-05-26 (Date range filters, log exporter, segmented controls)*
