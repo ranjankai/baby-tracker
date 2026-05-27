@@ -69,7 +69,8 @@ export default function QuickLog() {
   const [bottleAmount,  setBottleAmount]  = useState('');
   const [bottleNote,    setBottleNote]    = useState('');
   const [bottleElapsed, setBottleElapsed] = useState(0);
-  const [isStopping,    setIsStopping]    = useState(false); // prevents double-tap
+  const [isStopping,    setIsStopping]    = useState(false); // prevents double-tap on stop
+  const [isPausing,     setIsPausing]     = useState(false); // prevents double-tap on pause/resume
 
   const getLocalDatetime = () => {
     const now = new Date();
@@ -129,6 +130,9 @@ export default function QuickLog() {
     return () => clearInterval(interval);
   }, [activeFeed]);
 
+  // Reset isPausing as soon as the DB confirms the pause/resume (is_paused flipped)
+  useEffect(() => { setIsPausing(false); }, [activeFeed?.is_paused]);
+
   const formatTimer = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -150,15 +154,17 @@ export default function QuickLog() {
   };
 
   const handlePauseFeed = () => {
-    if (!activeFeed) return;
-    updateEvent(activeFeed.id, { 
-      is_paused: true, 
-      paused_at: new Date().toISOString() 
+    if (!activeFeed || isPausing) return;
+    setIsPausing(true);
+    updateEvent(activeFeed.id, {
+      is_paused: true,
+      paused_at: new Date().toISOString()
     });
   };
 
   const handleResumeFeed = () => {
-    if (!activeFeed) return;
+    if (!activeFeed || isPausing) return;
+    setIsPausing(true);
     const pauseDuration = Date.now() - new Date(activeFeed.paused_at).getTime();
     updateEvent(activeFeed.id, {
       is_paused: false,
@@ -307,8 +313,10 @@ export default function QuickLog() {
   useEffect(() => {
     if (anyActive) {
       setIsSubmitting(null);
+      setIsPausing(false); // reset whenever activeFeed updates (pause/resume resolved)
     } else {
-      setIsStopping(false); // reset when feed clears (success or error)
+      setIsStopping(false);
+      setIsPausing(false);
     }
   }, [anyActive]);
 
@@ -335,10 +343,11 @@ export default function QuickLog() {
               style={{ background: 'var(--accent)', color: 'white', padding: '0', flex: 1, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '14px', border: 'none', cursor: isStopping ? 'not-allowed' : 'pointer', opacity: isStopping ? 0.5 : 1, transition: 'opacity 0.15s' }}>
               <Square size={20} fill="currentColor" />
             </button>
-            <button className="button-primary" 
+            <button className="button-primary"
               onClick={activeFeed.is_paused ? handleResumeFeed : handlePauseFeed}
               title={activeFeed.is_paused ? 'Resume' : 'Pause'}
-              style={{ background: activeFeed.is_paused ? 'var(--secondary)' : '#f3f0ff', color: activeFeed.is_paused ? 'white' : 'var(--primary)', padding: '0', flex: 1, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '14px', border: 'none', cursor: 'pointer' }}>
+              disabled={isPausing}
+              style={{ background: activeFeed.is_paused ? 'var(--secondary)' : '#f3f0ff', color: activeFeed.is_paused ? 'white' : 'var(--primary)', padding: '0', flex: 1, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '14px', border: 'none', cursor: isPausing ? 'not-allowed' : 'pointer', opacity: isPausing ? 0.5 : 1, transition: 'opacity 0.15s' }}>
               {activeFeed.is_paused ? <Play size={20} fill="currentColor" /> : <Pause size={20} fill="currentColor" />}
             </button>
             <div className={`metric-pill ${activeFeed.is_paused ? 'amber' : 'lavender'}`} style={{ fontWeight: '700', gap: '6px', height: '48px', padding: '0 16px', borderRadius: '14px', flexShrink: 0, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}>
