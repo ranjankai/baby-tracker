@@ -154,107 +154,100 @@ function formatContextBlock(history: ContextRow[]): string {
 type OutputFormat = "answer" | "list" | "file_text" | "file_markdown" | "help";
 
 interface Extraction {
-  event_types: string[];  // e.g. ["diaper"] or ["all"]
-  from_date:   string;    // yyyy-mm-dd IST
-  to_date:     string;    // yyyy-mm-dd IST
+  event_types:   string[];      // e.g. ["diaper"] or ["all"]
+  days_back:     number;        // how many days to look back (Gemma outputs this, TypeScript does the math)
+  from_date?:    string;        // yyyy-mm-dd — only set when user gives an explicit absolute start date
+  to_date?:      string;        // yyyy-mm-dd — only set when user gives an explicit absolute end date
   output_format: OutputFormat;
 }
 
-async function extractIntent(message: string, today: string): Promise<Extraction> {
+async function extractIntent(message: string, today: string): Promise<Extraction & { resolvedFrom: string; resolvedTo: string }> {
   const prompt = `
 You are a data extraction engine for a baby tracker Telegram bot.
 Today's date is ${today} (IST, yyyy-mm-dd).
 
 User message: "${message}"
 
-Extract the following and output ONLY a raw JSON object with these exact keys:
+Output ONLY a raw JSON object with these exact keys:
 
 {
-  "event_types": array — pick from ["diaper","mom_l","mom_r","top","spit_up","medicine","weight"].
-                 Use ["all"] only when the request spans multiple types with no specific focus.
-                 "diaper" covers ALL pee/poop/diaper questions.
-                 ["mom_l","mom_r","top"] covers ALL feeding questions.
+  "event_types": array — MUST only contain values from this exact list:
+                 ["diaper", "mom_l", "mom_r", "top", "spit_up", "medicine", "weight"]
+                 Rules:
+                 - "poop", "pee", "nappy" are NOT valid — use "diaper" for ALL poop/pee/nappy questions.
+                 - ["mom_l","mom_r","top"] covers ALL feeding/breastfeeding questions.
+                 - Use ["all"] only when the request spans multiple unrelated types with no specific focus.
 
-  "from_date": "yyyy-mm-dd" — start of the date range in IST.
-               Default for "answer": today (${today}).
-               Default for "list" or "file_*": 7 days ago (${getISTDate(-6)}).
+  "days_back": integer — how many calendar days to look back FROM today (inclusive).
+               You are ONLY deciding the number — do NOT compute actual dates.
+               Examples: "today" → 1, "yesterday" → 2, "last 2 days" → 2,
+               "last 7 days" → 7, "last week" → 7, "last month" → 30,
+               "last 20 days" → 20, "past 3 weeks" → 21, "since Monday" → days since last Monday.
+               Default for "answer": 1. Default for "list" or "file_*": 7.
 
-  "to_date": "yyyy-mm-dd" — end of the date range in IST. Default: today (${today}).
+  "from_date": null OR "yyyy-mm-dd" — ONLY set this if the user gave an explicit absolute
+               start date (e.g. "from May 21", "since the 15th", "May 21 to May 27").
+               If set, it overrides days_back for the start boundary.
 
-  "output_format": one of these exact strings:
-    "help"          — message is /start, /help, or asking what the bot can do
-    "answer"        — analytical question needing expert interpretation (e.g. "is this normal?", "when was last?", "how many today?")
-    "list"          — user wants to SEE individual events as a timeline (e.g. "show me", "give me the logs", "list", "history")
-    "file_text"     — user wants a downloadable file for their doctor (plain text .txt)
-    "file_markdown" — user wants a downloadable file for ChatGPT or in markdown (.md)
+  "to_date": null OR "yyyy-mm-dd" — ONLY set if the user gave an explicit absolute end date.
+             Default: null (means today).
+
+  "output_format": one of:
+    "help"          — /start, /help, or asking what the bot can do
+    "answer"        — analytical question (e.g. "is this normal?", "when was last?", "how many?")
+    "list"          — user wants to SEE a log/timeline of events ("show me", "give me the logs", "list")
+    "file_text"     — wants a downloadable file for their doctor (.txt)
+    "file_markdown" — wants a downloadable file for ChatGPT (.md)
 }
 
 Examples:
-"give me poop logs last 7 days"    → {"event_types":["diaper"],"from_date":"${getISTDate(-6)}","to_date":"${today}","output_format":"list"}
-"show me all feeds today"          → {"event_types":["mom_l","mom_r","top"],"from_date":"${today}","to_date":"${today}","output_format":"list"}
-"when was her last feed?"          → {"event_types":["mom_l","mom_r","top"],"from_date":"${today}","to_date":"${today}","output_format":"answer"}
-"is her spit up normal?"           → {"event_types":["spit_up"],"from_date":"${getISTDate(-6)}","to_date":"${today}","output_format":"answer"}
-"export last 7 days for doctor"    → {"event_types":["all"],"from_date":"${getISTDate(-6)}","to_date":"${today}","output_format":"file_text"}
-"export last 3 days for ChatGPT"   → {"event_types":["all"],"from_date":"${getISTDate(-2)}","to_date":"${today}","output_format":"file_markdown"}
-"export poop data last 5 days"     → {"event_types":["diaper"],"from_date":"${getISTDate(-4)}","to_date":"${today}","output_format":"file_text"}
-"/help"                            → {"event_types":["all"],"from_date":"${today}","to_date":"${today}","output_format":"help"}
+"give me poop logs last 7 days"  → {"event_types":["diaper"],"days_back":7,"from_date":null,"to_date":null,"output_format":"list"}
+"show me all feeds today"        → {"event_types":["mom_l","mom_r","top"],"days_back":1,"from_date":null,"to_date":null,"output_format":"list"}
+"when was her last feed?"        → {"event_types":["mom_l","mom_r","top"],"days_back":1,"from_date":null,"to_date":null,"output_format":"answer"}
+"is her spit up normal?"         → {"event_types":["spit_up"],"days_back":7,"from_date":null,"to_date":null,"output_format":"answer"}
+"give me logs last month"        → {"event_types":["all"],"days_back":30,"from_date":null,"to_date":null,"output_format":"list"}
+"poop logs last 20 days"         → {"event_types":["diaper"],"days_back":20,"from_date":null,"to_date":null,"output_format":"list"}
+"export May 21 to May 27"        → {"event_types":["all"],"days_back":7,"from_date":"2026-05-21","to_date":"2026-05-27","output_format":"file_text"}
+"export last 3 days for ChatGPT" → {"event_types":["all"],"days_back":3,"from_date":null,"to_date":null,"output_format":"file_markdown"}
+"/help"                          → {"event_types":["all"],"days_back":1,"from_date":null,"to_date":null,"output_format":"help"}
 `;
 
   try {
     const raw    = await callGemini(prompt, PROTOCOL_MODELS, true);
     const parsed = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? raw) as Extraction;
 
-    // ── Deterministic date override ───────────────────────────────────────────
-    // LLMs are unreliable at date arithmetic. Parse time expressions in
-    // TypeScript and override whatever Gemma produced.
-    const lower = message.toLowerCase();
+    // TypeScript does the one arithmetic step Gemma must not do
+    const days        = Math.max(1, parsed.days_back ?? 1);
+    const resolvedTo  = parsed.to_date   ?? today;
+    const resolvedFrom = parsed.from_date ?? getISTDate(-(days - 1));
 
-    // "last N days" / "past N days"
-    const daysMatch = lower.match(/(?:last|past)\s+(\d+)\s+days?/);
-    if (daysMatch) {
-      const n = parseInt(daysMatch[1], 10);
-      parsed.from_date = getISTDate(-(n - 1));
-      parsed.to_date   = today;
-    }
-    // "last week" / "this week"
-    else if (/last\s+week|this\s+week/.test(lower)) {
-      parsed.from_date = getISTDate(-6);
-      parsed.to_date   = today;
-    }
-    // "yesterday"
-    else if (/\byesterday\b/.test(lower)) {
-      parsed.from_date = getISTDate(-1);
-      parsed.to_date   = getISTDate(-1);
-    }
-    // "today" (explicit)
-    else if (/\btoday\b/.test(lower)) {
-      parsed.from_date = today;
-      parsed.to_date   = today;
-    }
-
-    // Final safety net — never let from_date be empty
-    if (!parsed.from_date) parsed.from_date = today;
-    if (!parsed.to_date)   parsed.to_date   = today;
-
-    console.log(`Extracted → types:${parsed.event_types} from:${parsed.from_date} to:${parsed.to_date} fmt:${parsed.output_format}`);
-    return parsed;
+    console.log(`Extracted → types:${parsed.event_types} days_back:${days} from:${resolvedFrom} to:${resolvedTo} fmt:${parsed.output_format}`);
+    return { ...parsed, resolvedFrom, resolvedTo };
   } catch {
-    return { event_types: ["all"], from_date: today, to_date: today, output_format: "answer" };
+    return { event_types: ["all"], days_back: 1, resolvedFrom: today, resolvedTo: today, output_format: "answer" };
   }
 }
 
-
 // ── DB fetch ──────────────────────────────────────────────────────────────────
-async function fetchEvents(extraction: Extraction): Promise<any[]> {
+async function fetchEvents(resolvedFrom: string, resolvedTo: string, eventTypes: string[]): Promise<any[]> {
+  // Safety mapping: models sometimes output invalid type names — normalise them
+  const TYPE_MAP: Record<string, string> = {
+    poop: "diaper", pee: "diaper", nappy: "diaper", diaper_change: "diaper",
+    breast: "mom_l", breastfeed: "mom_l", bottle: "top", feed: "top",
+    spit: "spit_up", vomit: "spit_up", med: "medicine", medication: "medicine",
+  };
+  const normalised = [...new Set(
+    eventTypes.map(t => TYPE_MAP[t.toLowerCase()] ?? t)
+  )];
   let query = supabase
     .from("baby_events").select("*")
-    .gte("start_time", `${extraction.from_date}T00:00:00.000Z`)
-    .lte("start_time", `${extraction.to_date}T23:59:59.999Z`)
+    .gte("start_time", `${resolvedFrom}T00:00:00.000Z`)
+    .lte("start_time", `${resolvedTo}T23:59:59.999Z`)
     .not("notes", "like", "SYSTEM_MSG%")
     .order("start_time", { ascending: true });
 
-  if (!extraction.event_types.includes("all")) {
-    query = query.in("type", extraction.event_types);
+  if (!normalised.includes("all")) {
+    query = query.in("type", normalised);
   }
 
   const { data } = await query;
