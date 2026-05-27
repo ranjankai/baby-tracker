@@ -69,6 +69,7 @@ export default function QuickLog() {
   const [bottleAmount,  setBottleAmount]  = useState('');
   const [bottleNote,    setBottleNote]    = useState('');
   const [bottleElapsed, setBottleElapsed] = useState(0);
+  const [isStopping,    setIsStopping]    = useState(false); // prevents double-tap
 
   const getLocalDatetime = () => {
     const now = new Date();
@@ -221,6 +222,8 @@ export default function QuickLog() {
   };
 
   const handleStopActiveFeed = () => {
+    if (isStopping) return;          // guard: ignore second tap
+    setIsStopping(true);             // disable immediately, don't wait for DB
     if (activeFeed?.type === 'top') handleStopBottle();
     else handleStopMomFeed();
   };
@@ -304,6 +307,8 @@ export default function QuickLog() {
   useEffect(() => {
     if (anyActive) {
       setIsSubmitting(null);
+    } else {
+      setIsStopping(false); // reset when feed clears (success or error)
     }
   }, [anyActive]);
 
@@ -326,7 +331,8 @@ export default function QuickLog() {
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: 1, marginLeft: '12px', minWidth: 0 }}>
             <button className="button-primary" onClick={handleStopActiveFeed}
               title="Stop"
-              style={{ background: 'var(--accent)', color: 'white', padding: '0', flex: 1, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '14px', border: 'none', cursor: 'pointer' }}>
+              disabled={isStopping}
+              style={{ background: 'var(--accent)', color: 'white', padding: '0', flex: 1, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '14px', border: 'none', cursor: isStopping ? 'not-allowed' : 'pointer', opacity: isStopping ? 0.5 : 1, transition: 'opacity 0.15s' }}>
               <Square size={20} fill="currentColor" />
             </button>
             <button className="button-primary" 
