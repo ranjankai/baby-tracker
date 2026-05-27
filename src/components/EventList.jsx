@@ -534,12 +534,19 @@ export default function EventList() {
                 {(editingEvent.type === 'mom_l' || editingEvent.type === 'mom_r') && (
                   <>
                     <span className="intensity-label">Breast Side</span>
-                    <div className="intensity-grid" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: '16px' }}>
-                      <button className={`intensity-button ${editingEvent.type === 'mom_l' ? 'active' : ''}`}
+                    <div className="segmented-control">
+                      <div 
+                        className="segmented-sliding-bg" 
+                        style={{ 
+                          width: 'calc((100% - 8px) / 2)',
+                          left: `calc(4px + (${editingEvent.type === 'mom_l' ? 0 : 1} * (100% - 8px) / 2))`
+                        }} 
+                      />
+                      <button className={`segmented-item ${editingEvent.type === 'mom_l' ? 'active' : ''}`}
                         onClick={() => setEditingEvent({ ...editingEvent, type: 'mom_l' })}>
                         Left
                       </button>
-                      <button className={`intensity-button ${editingEvent.type === 'mom_r' ? 'active' : ''}`}
+                      <button className={`segmented-item ${editingEvent.type === 'mom_r' ? 'active' : ''}`}
                         onClick={() => setEditingEvent({ ...editingEvent, type: 'mom_r' })}>
                         Right
                       </button>
@@ -552,23 +559,39 @@ export default function EventList() {
             {editingEvent.type === 'diaper' && (
               <>
                 <span className="intensity-label">Pee Intensity</span>
-                <div className="intensity-grid">
+                <div className="segmented-control">
+                  <div 
+                    className="segmented-sliding-bg mint" 
+                    style={{ 
+                      width: 'calc((100% - 8px) / 3)',
+                      left: `calc(4px + (${['none', 'light', 'heavy'].indexOf(editingEvent.pee_amount || 'none')} * (100% - 8px) / 3))`
+                    }} 
+                  />
                   {['none', 'light', 'heavy'].map(amt => (
-                    <button key={amt} className={`intensity-button ${editingEvent.pee_amount === amt ? 'active mint' : ''}`}
+                    <button key={amt} className={`segmented-item ${editingEvent.pee_amount === amt ? 'active' : ''}`}
                       onClick={() => setEditingEvent({ ...editingEvent, pee_amount: amt })}>
                       {amt}
                     </button>
                   ))}
                 </div>
+
                 <span className="intensity-label">Poop Intensity</span>
-                <div className="intensity-grid">
+                <div className="segmented-control">
+                  <div 
+                    className="segmented-sliding-bg mint" 
+                    style={{ 
+                      width: 'calc((100% - 8px) / 3)',
+                      left: `calc(4px + (${['none', 'light', 'heavy'].indexOf(editingEvent.poop_amount || 'none')} * (100% - 8px) / 3))`
+                    }} 
+                  />
                   {['none', 'light', 'heavy'].map(amt => (
-                    <button key={amt} className={`intensity-button ${editingEvent.poop_amount === amt ? 'active mint' : ''}`}
+                    <button key={amt} className={`segmented-item ${editingEvent.poop_amount === amt ? 'active' : ''}`}
                       onClick={() => setEditingEvent({ ...editingEvent, poop_amount: amt })}>
                       {amt}
                     </button>
                   ))}
                 </div>
+
                 <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
                   <input type="checkbox" id="edit_diaper_free"
                     checked={!!editingEvent.is_diaper_free}
@@ -578,6 +601,27 @@ export default function EventList() {
                   <label htmlFor="edit_diaper_free" style={{ fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}>
                     Diaper Free (Accident / Tummy Time)
                   </label>
+                </div>
+              </>
+            )}
+
+            {editingEvent.type === 'spit_up' && (
+              <>
+                <span className="intensity-label">Spit-up Intensity</span>
+                <div className="segmented-control">
+                  <div 
+                    className="segmented-sliding-bg amber" 
+                    style={{ 
+                      width: 'calc((100% - 8px) / 2)',
+                      left: `calc(4px + (${['minor', 'major'].indexOf(editingEvent.intensity || 'minor')} * (100% - 8px) / 2))`
+                    }} 
+                  />
+                  {['minor', 'major'].map(amt => (
+                    <button key={amt} className={`segmented-item ${editingEvent.intensity === amt ? 'active' : ''}`}
+                      onClick={() => setEditingEvent({ ...editingEvent, intensity: amt })}>
+                      {amt}
+                    </button>
+                  ))}
                 </div>
               </>
             )}

@@ -282,6 +282,64 @@ h2 {
   display: block;
 }
 
+/* Premium Segmented Controls (Tactile Sliding Toggles) */
+.segmented-control {
+  position: relative;
+  display: flex;
+  background: #f4f4f7;
+  border-radius: 14px;
+  padding: 4px;
+  margin-bottom: 20px;
+  isolation: isolate;
+  border: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.segmented-sliding-bg {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  border-radius: 10px;
+  background: var(--primary);
+  box-shadow: 0 4px 10px rgba(157, 141, 241, 0.25);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 0;
+}
+
+.segmented-sliding-bg.mint {
+  background: var(--secondary);
+  box-shadow: 0 4px 10px rgba(142, 211, 201, 0.25);
+}
+
+.segmented-sliding-bg.amber {
+  background: #f59e0b;
+  box-shadow: 0 4px 10px rgba(245, 158, 11, 0.25);
+}
+
+.segmented-item {
+  position: relative;
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 10px 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  z-index: 1;
+  text-align: center;
+  transition: color 0.2s, transform 0.1s;
+  text-transform: capitalize;
+  font-family: var(--sans);
+}
+
+.segmented-item:active {
+  transform: scale(0.97);
+}
+
+.segmented-item.active {
+  color: #ffffff !important;
+}
+
 .input-field {
   display: block;
   width: 100%;

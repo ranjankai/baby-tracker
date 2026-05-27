@@ -401,21 +401,35 @@ export default function QuickLog() {
             <h2 style={{ marginBottom: '20px' }}>{isDiaperFree ? 'Log Diaper Free 🍃' : 'Log Diaper 👶'}</h2>
 
             <span className="intensity-label">Pee</span>
-            <div className="intensity-grid">
+            <div className="segmented-control">
+              <div 
+                className="segmented-sliding-bg mint" 
+                style={{ 
+                  width: 'calc((100% - 8px) / 3)',
+                  left: `calc(4px + (${['none', 'light', 'heavy'].indexOf(peeAmount)} * (100% - 8px) / 3))`
+                }} 
+              />
               {['none', 'light', 'heavy'].map(amt => (
-                <button key={amt} className={`intensity-button ${peeAmount === amt ? 'active mint' : ''}`}
+                <button key={amt} className={`segmented-item ${peeAmount === amt ? 'active' : ''}`}
                   onClick={() => setPeeAmount(amt)}>
-                  {amt.charAt(0).toUpperCase() + amt.slice(1)}
+                  {amt}
                 </button>
               ))}
             </div>
 
             <span className="intensity-label">Poop</span>
-            <div className="intensity-grid">
+            <div className="segmented-control">
+              <div 
+                className="segmented-sliding-bg mint" 
+                style={{ 
+                  width: 'calc((100% - 8px) / 3)',
+                  left: `calc(4px + (${['none', 'light', 'heavy'].indexOf(poopAmount)} * (100% - 8px) / 3))`
+                }} 
+              />
               {['none', 'light', 'heavy'].map(amt => (
-                <button key={amt} className={`intensity-button ${poopAmount === amt ? 'active mint' : ''}`}
+                <button key={amt} className={`segmented-item ${poopAmount === amt ? 'active' : ''}`}
                   onClick={() => setPoopAmount(amt)}>
-                  {amt.charAt(0).toUpperCase() + amt.slice(1)}
+                  {amt}
                 </button>
               ))}
             </div>
@@ -479,11 +493,18 @@ export default function QuickLog() {
             <h2 style={{ marginBottom: '20px' }}>Log Spit-up 🤢</h2>
 
             <span className="intensity-label">Intensity</span>
-            <div className="intensity-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            <div className="segmented-control">
+              <div 
+                className="segmented-sliding-bg amber" 
+                style={{ 
+                  width: 'calc((100% - 8px) / 2)',
+                  left: `calc(4px + (${['minor', 'major'].indexOf(spitUpIntensity)} * (100% - 8px) / 2))`
+                }} 
+              />
               {['minor', 'major'].map(amt => (
-                <button key={amt} className={`intensity-button ${spitUpIntensity === amt ? 'active mint' : ''}`}
+                <button key={amt} className={`segmented-item ${spitUpIntensity === amt ? 'active' : ''}`}
                   onClick={() => setSpitUpIntensity(amt)}>
-                  {amt.charAt(0).toUpperCase() + amt.slice(1)}
+                  {amt}
                 </button>
               ))}
             </div>
