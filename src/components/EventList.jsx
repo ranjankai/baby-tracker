@@ -160,7 +160,7 @@ export default function EventList() {
   const [showExporter, setShowExporter]     = useState(false);
   const [exportFormat, setExportFormat]     = useState('text'); // 'text' | 'markdown'
   const [fromConfigDate, setFromConfigDate] = useState(getLocalDate());
-  const [windowOffset, setWindowOffset]     = useState(0); // number of days to extend range
+  const [toConfigDate, setToConfigDate]     = useState(getLocalDate());
   const [copied, setCopied]                 = useState(false);
   const [rangeEvents, setRangeEvents]       = useState([]);
   const [isRangeLoading, setIsRangeLoading] = useState(false);
@@ -196,28 +196,10 @@ export default function EventList() {
     }
   }, [showDatePickerModal, dateFilter]); // eslint-disable-line
 
-  const getDaysBetween = (d1Str, d2Str) => {
-    const d1 = new Date(d1Str);
-    const d2 = new Date(d2Str);
-    d1.setHours(0,0,0,0);
-    d2.setHours(0,0,0,0);
-    return Math.max(0, Math.round((d2 - d1) / (1000 * 60 * 60 * 24)));
-  };
-
-  const getEndDateFromOffset = (startDateStr, offsetDays) => {
-    const d = new Date(startDateStr);
-    d.setDate(d.getDate() + offsetDays);
-    return d.toISOString().split('T')[0];
-  };
-
-  const toConfigDate = getEndDateFromOffset(fromConfigDate, windowOffset);
-  const maxOffset = getDaysBetween(fromConfigDate, today);
-
-  const handleFromDateChange = (newFrom) => {
+  const handleFromConfigDateChange = (newFrom) => {
     setFromConfigDate(newFrom);
-    const newMax = getDaysBetween(newFrom, today);
-    if (windowOffset > newMax) {
-      setWindowOffset(newMax);
+    if (new Date(toConfigDate) < new Date(newFrom)) {
+      setToConfigDate(newFrom);
     }
   };
 
@@ -831,31 +813,21 @@ export default function EventList() {
               value={fromConfigDate} 
               min={firstDate} 
               max={today}
-              onChange={(e) => handleFromDateChange(e.target.value)}
+              onChange={(e) => handleFromConfigDateChange(e.target.value)}
               style={{ marginBottom: '20px' }}
             />
 
-            {/* Sliding Window Range Selector */}
-            <div className="range-slider-container">
-              <div className="range-slider-header">
-                <span className="range-slider-label">Window Duration</span>
-                <span className="range-slider-value">
-                  {windowOffset === 0 ? 'Single Day' : `+${windowOffset} Day${windowOffset > 1 ? 's' : ''}`}
-                </span>
-              </div>
-              <input 
-                type="range" 
-                className="slider-input" 
-                min="0" 
-                max={maxOffset} 
-                value={windowOffset}
-                onChange={(e) => setWindowOffset(parseInt(e.target.value))}
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)' }}>
-                <span>{formatDateDMY(fromConfigDate)} (From)</span>
-                <span>{formatDateDMY(toConfigDate)} (To)</span>
-              </div>
-            </div>
+            {/* To Date Picker */}
+            <span className="intensity-label" style={{ marginBottom: '8px' }}>To Date</span>
+            <input 
+              type="date" 
+              className="input-field" 
+              value={toConfigDate} 
+              min={fromConfigDate} 
+              max={today}
+              onChange={(e) => setToConfigDate(e.target.value)}
+              style={{ marginBottom: '20px' }}
+            />
 
             {/* Tab format selector */}
             <div className="tab-switcher">
