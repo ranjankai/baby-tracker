@@ -62,6 +62,9 @@ export default function InsightBox() {
     });
   };
 
+  // Hidden from UI per user request, but logic kept intact
+  return null;
+  
   return (
     <>
       {/* Floating Action Button */}
