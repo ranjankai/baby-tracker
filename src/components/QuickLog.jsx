@@ -156,22 +156,22 @@ export default function QuickLog() {
   const handlePauseFeed = () => {
     if (!activeFeed || isPausing) return;
     setIsPausing(true);
-    updateEvent(activeFeed.id, {
-      is_paused: true,
-      paused_at: new Date().toISOString()
-    });
+    const pausedAt = new Date().toISOString();
+    // Optimistic: freeze timer and flip icon immediately, don't wait for DB
+    setActiveFeed(prev => ({ ...prev, is_paused: true, paused_at: pausedAt }));
+    updateEvent(activeFeed.id, { is_paused: true, paused_at: pausedAt });
   };
 
   const handleResumeFeed = () => {
     if (!activeFeed || isPausing) return;
     setIsPausing(true);
     const pauseDuration = Date.now() - new Date(activeFeed.paused_at).getTime();
-    updateEvent(activeFeed.id, {
-      is_paused: false,
-      paused_at: null,
-      total_paused_ms: (activeFeed.total_paused_ms || 0) + pauseDuration
-    });
+    const newTotalPaused = (activeFeed.total_paused_ms || 0) + pauseDuration;
+    // Optimistic: unfreeze timer immediately, don't wait for DB
+    setActiveFeed(prev => ({ ...prev, is_paused: false, paused_at: null, total_paused_ms: newTotalPaused }));
+    updateEvent(activeFeed.id, { is_paused: false, paused_at: null, total_paused_ms: newTotalPaused });
   };
+
 
   const handleStopMomFeed = () => {
     if (!activeFeed) return;
