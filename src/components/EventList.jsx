@@ -131,6 +131,11 @@ function SwipeableRow({ children, onDelete, onEdit, onNote }) {
   );
 }
 
+const getLocalDate = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+};
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function EventList() {
   const {
@@ -225,10 +230,6 @@ export default function EventList() {
   }, [filters, dateFilter]);
 
   // ── helpers ─────────────────────────────────────────────────────────────
-  const getLocalDate = () => {
-    const d = new Date();
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
-  };
   const today = getLocalDate();
   const firstDate = allTimeStats.firstEventTime
     ? new Date(new Date(allTimeStats.firstEventTime).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0]
