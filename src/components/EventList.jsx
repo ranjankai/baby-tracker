@@ -4,6 +4,7 @@ import { Milk, MessageCircle, Edit3, Trash2, ChevronLeft, ChevronRight, Calendar
 import { Diaper, TummyTime, SpitUp, TopFeed, Breastfeed } from './Icons';
 import { generateFilteredSummary } from '../utils/ai';
 import { formatLogsToPlainText, formatLogsToMarkdown, formatDateDMY } from '../utils/exporter';
+import CustomCalendar from './CustomCalendar';
 
 // ─── SwipeableRow ──────────────────
 function SwipeableRow({ children, onDelete, onEdit, onNote }) {
@@ -196,12 +197,6 @@ export default function EventList() {
     }
   }, [showDatePickerModal, dateFilter]); // eslint-disable-line
 
-  const handleFromConfigDateChange = (newFrom) => {
-    setFromConfigDate(newFrom);
-    if (new Date(toConfigDate) < new Date(newFrom)) {
-      setToConfigDate(newFrom);
-    }
-  };
 
   useEffect(() => {
     if (showExporter && fetchEventsForRange) {
@@ -805,28 +800,16 @@ export default function EventList() {
               <button className="icon-action-btn" onClick={() => setShowExporter(false)}><X size={22} /></button>
             </div>
 
-            {/* From Date Picker */}
-            <span className="intensity-label" style={{ marginBottom: '8px' }}>From Date</span>
-            <input 
-              type="date" 
-              className="input-field" 
-              value={fromConfigDate} 
-              min={firstDate} 
-              max={today}
-              onChange={(e) => handleFromConfigDateChange(e.target.value)}
-              style={{ marginBottom: '20px' }}
-            />
-
-            {/* To Date Picker */}
-            <span className="intensity-label" style={{ marginBottom: '8px' }}>To Date</span>
-            <input 
-              type="date" 
-              className="input-field" 
-              value={toConfigDate} 
-              min={fromConfigDate} 
-              max={today}
-              onChange={(e) => setToConfigDate(e.target.value)}
-              style={{ marginBottom: '20px' }}
+            {/* Dynamic Custom Range Calendar */}
+            <CustomCalendar 
+              fromDate={fromConfigDate}
+              toDate={toConfigDate}
+              onChangeRange={(from, to) => {
+                setFromConfigDate(from);
+                setToConfigDate(to);
+              }}
+              firstDate={firstDate}
+              today={today}
             />
 
             {/* Tab format selector */}
@@ -889,45 +872,27 @@ export default function EventList() {
           <div
             className="modal-content"
             onClick={e => e.stopPropagation()}
-            style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxHeight: '80vh', borderRadius: '24px 24px 0 0', overflowY: 'auto', paddingBottom: 'env(safe-area-inset-bottom, 20px)' }}
+            style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxHeight: '90vh', borderRadius: '24px 24px 0 0', overflowY: 'auto', paddingBottom: 'env(safe-area-inset-bottom, 20px)' }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ margin: 0 }}>Filter Date Range 📅</h2>
               <button className="icon-action-btn" onClick={() => setShowDatePickerModal(false)}><X size={22} /></button>
             </div>
 
-            {/* From Date Picker */}
-            <span className="intensity-label" style={{ marginBottom: '8px' }}>From Date</span>
-            <input 
-              type="date" 
-              className="input-field" 
-              value={pickerFromDate} 
-              min={firstDate} 
-              max={today}
-              onChange={(e) => {
-                const newFrom = e.target.value;
-                setPickerFromDate(newFrom);
-                if (new Date(pickerToDate) < new Date(newFrom)) {
-                  setPickerToDate(newFrom);
-                }
+            {/* Dynamic Custom Range Calendar */}
+            <CustomCalendar 
+              fromDate={pickerFromDate}
+              toDate={pickerToDate}
+              onChangeRange={(from, to) => {
+                setPickerFromDate(from);
+                setPickerToDate(to);
               }}
-              style={{ marginBottom: '20px' }}
-            />
-
-            {/* To Date Picker */}
-            <span className="intensity-label" style={{ marginBottom: '8px' }}>To Date</span>
-            <input 
-              type="date" 
-              className="input-field" 
-              value={pickerToDate} 
-              min={pickerFromDate} 
-              max={today}
-              onChange={(e) => setPickerToDate(e.target.value)}
-              style={{ marginBottom: '20px' }}
+              firstDate={firstDate}
+              today={today}
             />
 
             {/* Preview of range selection */}
-            <div style={{ padding: '12px', background: 'var(--primary-light)', borderRadius: '12px', color: 'var(--primary)', fontWeight: '700', fontSize: '14px', textAlign: 'center', marginBottom: '20px' }}>
+            <div style={{ padding: '12px', background: 'var(--primary-light)', borderRadius: '12px', color: 'var(--primary)', fontWeight: '700', fontSize: '14px', textAlign: 'center', marginBottom: '20px', marginTop: '20px' }}>
               Range: {formatChipDate(pickerFromDate)} {pickerFromDate !== pickerToDate ? `→ ${formatChipDate(pickerToDate)}` : ''}
             </div>
 
