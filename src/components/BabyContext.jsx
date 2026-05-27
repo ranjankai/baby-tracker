@@ -41,10 +41,18 @@ export function BabyProvider({ children }) {
       .order('start_time', { ascending: false });
 
     if (targetDate) {
-      const [y, m, d] = targetDate.split('-').map(Number);
-      const start = new Date(y, m - 1, d, 0, 0, 0);
-      const end = new Date(y, m - 1, d, 23, 59, 59);
-      query = query.gte('start_time', start.toISOString()).lte('start_time', end.toISOString());
+      let startStr, endStr;
+      if (targetDate.includes(':')) {
+        [startStr, endStr] = targetDate.split(':');
+      } else {
+        startStr = targetDate;
+        endStr = targetDate;
+      }
+      const [ys, ms, ds] = startStr.split('-').map(Number);
+      const [ye, me, de] = endStr.split('-').map(Number);
+      const start = new Date(ys, ms - 1, ds, 0, 0, 0).toISOString();
+      const end = new Date(ye, me - 1, de, 23, 59, 59).toISOString();
+      query = query.gte('start_time', start).lte('start_time', end);
     }
 
     if (targetFilters.length > 0) {

@@ -165,6 +165,36 @@ export default function EventList() {
   const [rangeEvents, setRangeEvents]       = useState([]);
   const [isRangeLoading, setIsRangeLoading] = useState(false);
 
+  // Date Picker Range Modal state & logic
+  const [showDatePickerModal, setShowDatePickerModal] = useState(false);
+  const [pickerFromDate, setPickerFromDate]           = useState(getLocalDate());
+  const [pickerWindowOffset, setPickerWindowOffset]   = useState(0);
+
+  const formatChipDate = (isoStr) => {
+    if (!isoStr) return '';
+    const [y, m, d] = isoStr.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${d}-${months[parseInt(m)-1]}-${y.slice(2)}`;
+  };
+
+  useEffect(() => {
+    if (showDatePickerModal) {
+      if (dateFilter) {
+        if (dateFilter.includes(':')) {
+          const [from, to] = dateFilter.split(':');
+          setPickerFromDate(from);
+          setPickerWindowOffset(getDaysBetween(from, to));
+        } else {
+          setPickerFromDate(dateFilter);
+          setPickerWindowOffset(0);
+        }
+      } else {
+        setPickerFromDate(getLocalDate());
+        setPickerWindowOffset(0);
+      }
+    }
+  }, [showDatePickerModal, dateFilter]); // eslint-disable-line
+
   const getDaysBetween = (d1Str, d2Str) => {
     const d1 = new Date(d1Str);
     const d2 = new Date(d2Str);
@@ -408,22 +438,37 @@ export default function EventList() {
           <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', flex: 1, msOverflowStyle: 'none', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch', alignItems: 'center' }} className="hide-scrollbar">
 
             {/* Date chip */}
-            <label style={{ position: 'relative', flexShrink: 0, cursor: 'pointer', display: 'block' }}>
-              <div style={{ padding: '6px 12px', borderRadius: '20px', border: '1px solid', borderColor: dateFilter ? 'var(--primary)' : 'var(--border-soft)', background: dateFilter ? 'var(--primary-light)' : 'rgba(255,255,255,0.03)', display: 'flex', alignItems: 'center', gap: '6px', color: dateFilter ? 'var(--primary)' : 'var(--text-muted)', pointerEvents: 'none' }}>
-                <Calendar size={14} />
-                <span style={{ fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}>
-                  {dateFilter ? (() => {
-                    const [y, m, d] = dateFilter.split('-');
-                    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                    return `${d}-${months[parseInt(m)-1]}-${y.slice(2)}`;
-                  })() : 'Date'}
-                </span>
-              </div>
-              <input type="date" min={firstDate} max={today} value={dateFilter || ''}
-                onChange={(e) => { const v = e.target.value; if (v && v >= firstDate && v <= today) setGotoDate(v); }}
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', zIndex: 10, WebkitAppearance: 'none', display: 'block' }}
-              />
-            </label>
+            <button 
+              onClick={() => setShowDatePickerModal(true)}
+              style={{ 
+                flexShrink: 0, 
+                cursor: 'pointer', 
+                border: '1px solid',
+                borderColor: dateFilter ? 'var(--primary)' : 'var(--border-soft)',
+                background: dateFilter ? 'var(--primary-light)' : 'rgba(255,255,255,0.03)',
+                color: dateFilter ? 'var(--primary)' : 'var(--text-muted)',
+                padding: '6px 12px',
+                borderRadius: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '12px',
+                fontWeight: '600',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <Calendar size={14} />
+              <span>
+                {dateFilter ? (() => {
+                  if (dateFilter.includes(':')) {
+                    const [from, to] = dateFilter.split(':');
+                    return `${formatChipDate(from)} → ${formatChipDate(to)}`;
+                  }
+                  return formatChipDate(dateFilter);
+                })() : 'Date'}
+              </span>
+            </button>
 
             <div style={{ width: '1px', height: '16px', background: 'var(--border-soft)', flexShrink: 0 }} />
 
@@ -859,6 +904,94 @@ export default function EventList() {
                 disabled={isRangeLoading || rangeEvents.length === 0}
               >
                 Save PDF / Print
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Date Picker Range Modal (bottom sheet) ── */}
+      {showDatePickerModal && (
+        <div className="modal-overlay" onClick={() => setShowDatePickerModal(false)}>
+          <div
+            className="modal-content"
+            onClick={e => e.stopPropagation()}
+            style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxHeight: '80vh', borderRadius: '24px 24px 0 0', overflowY: 'auto', paddingBottom: 'env(safe-area-inset-bottom, 20px)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0 }}>Filter Date Range 📅</h2>
+              <button className="icon-action-btn" onClick={() => setShowDatePickerModal(false)}><X size={22} /></button>
+            </div>
+
+            {/* From Date Picker */}
+            <span className="intensity-label" style={{ marginBottom: '8px' }}>From Date</span>
+            <input 
+              type="date" 
+              className="input-field" 
+              value={pickerFromDate} 
+              min={firstDate} 
+              max={today}
+              onChange={(e) => {
+                const newFrom = e.target.value;
+                setPickerFromDate(newFrom);
+                const newMax = getDaysBetween(newFrom, today);
+                if (pickerWindowOffset > newMax) {
+                  setPickerWindowOffset(newMax);
+                }
+              }}
+              style={{ marginBottom: '20px' }}
+            />
+
+            {/* Sliding Window Range Selector */}
+            <div className="range-slider-container">
+              <div className="range-slider-header">
+                <span className="range-slider-label">Window Duration</span>
+                <span className="range-slider-value">
+                  {pickerWindowOffset === 0 ? 'Single Day' : `+${pickerWindowOffset} Day${pickerWindowOffset > 1 ? 's' : ''}`}
+                </span>
+              </div>
+              <input 
+                type="range" 
+                className="slider-input" 
+                min="0" 
+                max={getDaysBetween(pickerFromDate, today)} 
+                value={pickerWindowOffset}
+                onChange={(e) => setPickerWindowOffset(parseInt(e.target.value))}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)' }}>
+                <span>{formatDateDMY(pickerFromDate)} (From)</span>
+                <span>{formatDateDMY(getEndDateFromOffset(pickerFromDate, pickerWindowOffset))} (To)</span>
+              </div>
+            </div>
+
+            {/* Preview of range selection */}
+            <div style={{ padding: '12px', background: 'var(--primary-light)', borderRadius: '12px', color: 'var(--primary)', fontWeight: '700', fontSize: '14px', textAlign: 'center', marginBottom: '20px' }}>
+              Range: {formatChipDate(pickerFromDate)} {pickerWindowOffset > 0 ? `→ ${formatChipDate(getEndDateFromOffset(pickerFromDate, pickerWindowOffset))}` : ''}
+            </div>
+
+            {/* Action buttons */}
+            <div className="grid-2">
+              <button 
+                className="button-primary" 
+                style={{ background: '#eee', color: '#666', border: 'none' }} 
+                onClick={() => {
+                  setGotoDate(null);
+                  setShowDatePickerModal(false);
+                }}
+              >
+                Clear Filter
+              </button>
+              <button 
+                className="button-primary" 
+                style={{ background: 'var(--primary)', color: 'white', border: 'none' }}
+                onClick={() => {
+                  const toDate = getEndDateFromOffset(pickerFromDate, pickerWindowOffset);
+                  const filterVal = pickerWindowOffset === 0 ? pickerFromDate : `${pickerFromDate}:${toDate}`;
+                  setGotoDate(filterVal);
+                  setShowDatePickerModal(false);
+                }}
+              >
+                Apply Range
               </button>
             </div>
           </div>
