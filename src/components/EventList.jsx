@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useBaby } from './BabyContext';
-import { Milk, MessageCircle, Edit3, Trash2, ChevronLeft, ChevronRight, Calendar, History, FilterX, Pill, RotateCcw, X, GripVertical, Scale, Sparkles } from 'lucide-react';
+import { Milk, MessageCircle, Edit3, Trash2, ChevronLeft, ChevronRight, Calendar, History, FilterX, Pill, RotateCcw, X, GripVertical, Scale, Sparkles, Share2 } from 'lucide-react';
 import { Diaper, TummyTime, SpitUp, TopFeed, Breastfeed } from './Icons';
 import { generateFilteredSummary } from '../utils/ai';
+import { formatLogsToPlainText, formatLogsToMarkdown, formatDateDMY } from '../utils/exporter';
 
 // ─── SwipeableRow ──────────────────
 function SwipeableRow({ children, onDelete, onEdit, onNote }) {
@@ -137,7 +138,7 @@ export default function EventList() {
     page, setPage, totalCount, PAGE_SIZE,
     filters, toggleFilter, loading,
     dateFilter, setGotoDate, allTimeStats,
-    restoreFromTrash, fetchDeletedEvents, weightLogs
+    restoreFromTrash, fetchDeletedEvents, fetchEventsForRange, weightLogs
   } = useBaby();
 
   const [editingEvent, setEditingEvent]     = useState(null);
@@ -148,6 +149,65 @@ export default function EventList() {
   const [deletedItems, setDeletedItems]     = useState([]);
   const [filteredSummary, setFilteredSummary] = useState(null);
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
+
+  // Exporter state & logic
+  const [showExporter, setShowExporter]     = useState(false);
+  const [exportFormat, setExportFormat]     = useState('text'); // 'text' | 'markdown'
+  const [fromConfigDate, setFromConfigDate] = useState(getLocalDate());
+  const [windowOffset, setWindowOffset]     = useState(0); // number of days to extend range
+  const [copied, setCopied]                 = useState(false);
+  const [rangeEvents, setRangeEvents]       = useState([]);
+  const [isRangeLoading, setIsRangeLoading] = useState(false);
+
+  const getDaysBetween = (d1Str, d2Str) => {
+    const d1 = new Date(d1Str);
+    const d2 = new Date(d2Str);
+    d1.setHours(0,0,0,0);
+    d2.setHours(0,0,0,0);
+    return Math.max(0, Math.round((d2 - d1) / (1000 * 60 * 60 * 24)));
+  };
+
+  const getEndDateFromOffset = (startDateStr, offsetDays) => {
+    const d = new Date(startDateStr);
+    d.setDate(d.getDate() + offsetDays);
+    return d.toISOString().split('T')[0];
+  };
+
+  const toConfigDate = getEndDateFromOffset(fromConfigDate, windowOffset);
+  const maxOffset = getDaysBetween(fromConfigDate, today);
+
+  const handleFromDateChange = (newFrom) => {
+    setFromConfigDate(newFrom);
+    const newMax = getDaysBetween(newFrom, today);
+    if (windowOffset > newMax) {
+      setWindowOffset(newMax);
+    }
+  };
+
+  useEffect(() => {
+    if (showExporter && fetchEventsForRange) {
+      setIsRangeLoading(true);
+      fetchEventsForRange(fromConfigDate, toConfigDate)
+        .then(data => {
+          setRangeEvents(data);
+          setIsRangeLoading(false);
+        })
+        .catch(err => {
+          console.error(err);
+          setIsRangeLoading(false);
+        });
+    }
+  }, [showExporter, fromConfigDate, toConfigDate, fetchEventsForRange]); // eslint-disable-line
+
+  const reportText = exportFormat === 'text'
+    ? formatLogsToPlainText(rangeEvents, fromConfigDate, toConfigDate)
+    : formatLogsToMarkdown(rangeEvents, fromConfigDate, toConfigDate);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(reportText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const WINDOW_SIZE = 5;
   const totalPages = Math.max(1, Math.ceil(totalCount / (PAGE_SIZE || 50)));
@@ -335,6 +395,12 @@ export default function EventList() {
           <button onClick={() => setShowBin(true)} title="Recycle Bin"
             style={{ flexShrink: 0, background: 'var(--border-soft)', color: 'var(--text-muted)', border: 'none', borderRadius: '10px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             <Trash2 size={17} />
+          </button>
+
+          {/* Share Report icon — next to recycle bin */}
+          <button onClick={() => setShowExporter(true)} title="Share Report"
+            style={{ flexShrink: 0, background: 'var(--border-soft)', color: 'var(--text-muted)', border: 'none', borderRadius: '10px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <Share2 size={17} />
           </button>
 
           {/* Scrollable filter chips */}
@@ -696,6 +762,115 @@ export default function EventList() {
           </div>
         </div>
       )}
+
+      {/* ── Exporter Modal (bottom sheet) ── */}
+      {showExporter && (
+        <div className="modal-overlay" onClick={() => setShowExporter(false)}>
+          <div
+            className="modal-content"
+            onClick={e => e.stopPropagation()}
+            style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxHeight: '90vh', borderRadius: '24px 24px 0 0', overflowY: 'auto', paddingBottom: 'env(safe-area-inset-bottom, 20px)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0 }}>Share Logs 👶</h2>
+              <button className="icon-action-btn" onClick={() => setShowExporter(false)}><X size={22} /></button>
+            </div>
+
+            {/* From Date Picker */}
+            <span className="intensity-label" style={{ marginBottom: '8px' }}>From Date</span>
+            <input 
+              type="date" 
+              className="input-field" 
+              value={fromConfigDate} 
+              min={firstDate} 
+              max={today}
+              onChange={(e) => handleFromDateChange(e.target.value)}
+              style={{ marginBottom: '20px' }}
+            />
+
+            {/* Sliding Window Range Selector */}
+            <div className="range-slider-container">
+              <div className="range-slider-header">
+                <span className="range-slider-label">Window Duration</span>
+                <span className="range-slider-value">
+                  {windowOffset === 0 ? 'Single Day' : `+${windowOffset} Day${windowOffset > 1 ? 's' : ''}`}
+                </span>
+              </div>
+              <input 
+                type="range" 
+                className="slider-input" 
+                min="0" 
+                max={maxOffset} 
+                value={windowOffset}
+                onChange={(e) => setWindowOffset(parseInt(e.target.value))}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)' }}>
+                <span>{formatDateDMY(fromConfigDate)} (From)</span>
+                <span>{formatDateDMY(toConfigDate)} (To)</span>
+              </div>
+            </div>
+
+            {/* Tab format selector */}
+            <div className="tab-switcher">
+              <button 
+                className={`tab-btn ${exportFormat === 'text' ? 'active' : ''}`}
+                onClick={() => setExportFormat('text')}
+              >
+                Plain Text (Doctor)
+              </button>
+              <button 
+                className={`tab-btn ${exportFormat === 'markdown' ? 'active' : ''}`}
+                onClick={() => setExportFormat('markdown')}
+              >
+                Markdown (ChatGPT)
+              </button>
+            </div>
+
+            {/* Scrollable monospace preview window */}
+            <div className="exporter-preview-container">
+              {isRangeLoading ? (
+                <p style={{ textAlign: 'center', color: '#a8ffb2', fontFamily: 'monospace', fontSize: '12px', margin: '40px 0' }}>
+                  Loading report preview...
+                </p>
+              ) : rangeEvents.length === 0 ? (
+                <p style={{ textAlign: 'center', color: '#a8ffb2', fontFamily: 'monospace', fontSize: '12px', margin: '40px 0' }}>
+                  No logs recorded in selected date range.
+                </p>
+              ) : (
+                <pre className="exporter-preview-text">{reportText}</pre>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="grid-2" style={{ marginTop: '10px' }}>
+              <button 
+                className="button-primary" 
+                style={{ background: copied ? 'var(--secondary)' : 'var(--primary)', color: 'white', border: 'none', transition: 'background-color 0.2s' }} 
+                onClick={handleCopy}
+                disabled={isRangeLoading || rangeEvents.length === 0}
+              >
+                {copied ? 'Copied! ✓' : 'Copy Logs'}
+              </button>
+              <button 
+                className="button-primary" 
+                style={{ background: '#eee', color: '#333', border: 'none' }}
+                onClick={() => window.print()}
+                disabled={isRangeLoading || rangeEvents.length === 0}
+              >
+                Save PDF / Print
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Printable Report Header (hidden on screen, visible on print via CSS) */}
+      <div className="print-report-header">
+        <h1 className="print-report-title">👶 Baby Tracker Clinical Report</h1>
+        <div className="print-report-meta">
+          Report Scope: {formatDateDMY(fromConfigDate)} to {formatDateDMY(toConfigDate)} | Generated on {formatDateDMY(today)}
+        </div>
+      </div>
     </>
   );
 }

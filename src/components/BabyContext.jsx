@@ -195,6 +195,27 @@ export function BabyProvider({ children }) {
     return data || [];
   };
 
+  const fetchEventsForRange = useCallback(async (startDateStr, endDateStr) => {
+    if (!supabase) return [];
+    const [ys, ms, ds] = startDateStr.split('-').map(Number);
+    const [ye, me, de] = endDateStr.split('-').map(Number);
+    const start = new Date(ys, ms - 1, ds, 0, 0, 0).toISOString();
+    const end = new Date(ye, me - 1, de, 23, 59, 59).toISOString();
+
+    const { data, error } = await supabase
+      .from('baby_events')
+      .select('*')
+      .gte('start_time', start)
+      .lte('start_time', end)
+      .order('start_time', { ascending: true });
+
+    if (error) {
+      console.error('[BabyContext] fetchEventsForRange error:', error);
+      return [];
+    }
+    return (data || []).filter(e => !isSystemRow(e));
+  }, []);
+
   const toggleFilter = (filter) => {
     setFilters(prev => {
       const next = prev.includes(filter) ? prev.filter(f => f !== filter) : [...prev, filter];
@@ -212,7 +233,7 @@ export function BabyProvider({ children }) {
     <BabyContext.Provider value={{
       events, addEvent, updateEvent, deleteEvent, loading, allTimeStats, aiInsights,
       page, setPage, totalCount, PAGE_SIZE, filters, toggleFilter, dateFilter, setGotoDate,
-      lastFeed, metrics, restoreFromTrash, fetchDeletedEvents, weightLogs // Export the true last feed, metrics, and weights
+      lastFeed, metrics, restoreFromTrash, fetchDeletedEvents, fetchEventsForRange, weightLogs // Export range fetch
     }}>
       {children}
     </BabyContext.Provider>

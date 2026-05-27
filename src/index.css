@@ -622,3 +622,177 @@ input[type="datetime-local"].input-field {
     display: contents;
   }
 }
+
+/* Range Slider (Date Selector) */
+.range-slider-container {
+  margin-bottom: 20px;
+}
+
+.range-slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.range-slider-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.range-slider-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.slider-input {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border-soft);
+  outline: none;
+  margin: 12px 0;
+  transition: background 0.3s;
+}
+
+.slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 2px 6px rgba(157, 141, 241, 0.4);
+  cursor: pointer;
+  transition: transform 0.1s, background-color 0.2s;
+}
+
+.slider-input::-webkit-slider-thumb:active {
+  transform: scale(1.2);
+}
+
+/* Exporter Monospace Box */
+.exporter-preview-container {
+  background: #1e1e24;
+  border-radius: var(--radius-md);
+  padding: 16px;
+  max-height: 250px;
+  overflow-y: auto;
+  margin-bottom: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.exporter-preview-text {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  color: #a8ffb2;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  line-height: 1.5;
+  text-align: left;
+}
+
+/* Tab Switcher */
+.tab-switcher {
+  display: flex;
+  background: #f4f4f7;
+  border-radius: 12px;
+  padding: 3px;
+  margin-bottom: 20px;
+  border: 1px solid rgba(0, 0, 0, 0.02);
+}
+
+.tab-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 9px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-btn.active {
+  background: #ffffff;
+  color: var(--primary);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+/* Print CSS Stylesheet */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 12pt !important;
+  }
+  
+  #root, .app-layout, .app-main {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+  }
+  
+  /* Hide all dashboard/interactive UI elements */
+  .modal-overlay,
+  .app-sidebar,
+  .quick-log-card,
+  .theme-toggle,
+  .icon-action-btn,
+  .summary-scroll-container,
+  .scroll-hint,
+  .button-primary,
+  .segmented-control,
+  .input-field,
+  .intensity-label,
+  .drag-handle,
+  .history-header,
+  .pagination-container,
+  .chatbox-container,
+  .recycle-bin-modal {
+    display: none !important;
+  }
+
+  /* Printable Report Header */
+  .print-report-header {
+    display: block !important;
+    margin-bottom: 30px;
+    border-bottom: 2px solid #333;
+    padding-bottom: 10px;
+  }
+
+  .print-report-title {
+    font-size: 24pt;
+    font-weight: bold;
+    margin: 0 0 5px 0;
+  }
+
+  .print-report-meta {
+    font-size: 10pt;
+    color: #666;
+  }
+
+  /* Format history event items cleanly for clinical printouts */
+  .history-list {
+    display: block !important;
+  }
+
+  .history-item {
+    display: block !important;
+    border-bottom: 1px solid #ddd !important;
+    padding: 10px 0 !important;
+    margin: 0 !important;
+    page-break-inside: avoid;
+  }
+}
+
+.print-report-header {
+  display: none;
+}
