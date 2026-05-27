@@ -213,7 +213,8 @@ Deno.serve(async (req) => {
   }
 
   // Is this a file export request? (delivery mechanism only — Gemini still generates content)
-  const isExport = /\b(export|download|send.*file|for.*doctor|for.*chatgpt)\b/.test(lower);
+  const isExport = /\b(export|download|send|file|markdown|md|txt|for.*doctor|for.*chatgpt)\b/.test(lower);
+  const isMarkdown = /\b(markdown|md|chatgpt)\b/.test(lower);
 
   saveContext(chatId, "user", text).catch(console.error);
   await sendMessage(chatId, "🔍 <i>Analysing logs…</i>");
@@ -235,7 +236,9 @@ Deno.serve(async (req) => {
       : "";
 
     const formatRule = isExport
-      ? `OUTPUT FORMAT — The user wants a file to share. Generate a thorough, structured plain-text clinical report with sections: FEEDING SUMMARY, DIAPER DETAILS (pee + poop separately), MEDICATIONS, GENERAL HEALTH. Use bullet points. Be clinical and complete.`
+      ? (isMarkdown
+          ? `OUTPUT FORMAT — The user wants a file to share. Generate a thorough, structured clinical report using markdown formatting. Use bold headers, bullet points, and tables if useful. Sections: FEEDING SUMMARY, DIAPER DETAILS (pee + poop separately), MEDICATIONS, GENERAL HEALTH. Be clinical and complete.`
+          : `OUTPUT FORMAT — The user wants a file to share. Generate a thorough, structured plain-text clinical report with sections: FEEDING SUMMARY, DIAPER DETAILS (pee + poop separately), MEDICATIONS, GENERAL HEALTH. Use bullet points. Be clinical and complete. NO MARKDOWN.`)
       : `OUTPUT FORMAT — Read the request and respond appropriately:
 - If they want a LIST or LOG of events: respond with a clean day-by-day timestamped list grouped by IST date. Use "📅 DD-Mon" as a date header. One event per line: "  • HH:MM AM/PM — details". End with a one-line total count. PLAIN TEXT ONLY — no markdown bold, no asterisks.
 - If they're asking a QUESTION: answer concisely in plain text, max 100 words. Start with a direct answer.
@@ -272,7 +275,8 @@ RULES:
 
     if (isExport) {
       const today = getISTDate();
-      const filename = `baby-report-${today}.txt`;
+      const ext = isMarkdown ? "md" : "txt";
+      const filename = `baby-report-${today}.${ext}`;
       await sendDocument(chatId, filename, response, `📋 <b>Baby Tracker Report</b>`);
     } else {
       await sendMessage(chatId, response);
