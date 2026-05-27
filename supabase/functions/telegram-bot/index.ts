@@ -203,15 +203,46 @@ Examples:
   try {
     const raw    = await callGemini(prompt, PROTOCOL_MODELS, true);
     const parsed = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? raw) as Extraction;
-    // Sanitise dates
-    if (!parsed.from_date) parsed.from_date = getISTDate(-6);
+
+    // ── Deterministic date override ───────────────────────────────────────────
+    // LLMs are unreliable at date arithmetic. Parse time expressions in
+    // TypeScript and override whatever Gemma produced.
+    const lower = message.toLowerCase();
+
+    // "last N days" / "past N days"
+    const daysMatch = lower.match(/(?:last|past)\s+(\d+)\s+days?/);
+    if (daysMatch) {
+      const n = parseInt(daysMatch[1], 10);
+      parsed.from_date = getISTDate(-(n - 1));
+      parsed.to_date   = today;
+    }
+    // "last week" / "this week"
+    else if (/last\s+week|this\s+week/.test(lower)) {
+      parsed.from_date = getISTDate(-6);
+      parsed.to_date   = today;
+    }
+    // "yesterday"
+    else if (/\byesterday\b/.test(lower)) {
+      parsed.from_date = getISTDate(-1);
+      parsed.to_date   = getISTDate(-1);
+    }
+    // "today" (explicit)
+    else if (/\btoday\b/.test(lower)) {
+      parsed.from_date = today;
+      parsed.to_date   = today;
+    }
+
+    // Final safety net — never let from_date be empty
+    if (!parsed.from_date) parsed.from_date = today;
     if (!parsed.to_date)   parsed.to_date   = today;
+
+    console.log(`Extracted → types:${parsed.event_types} from:${parsed.from_date} to:${parsed.to_date} fmt:${parsed.output_format}`);
     return parsed;
   } catch {
-    // Safe default: general answer about today
     return { event_types: ["all"], from_date: today, to_date: today, output_format: "answer" };
   }
 }
+
 
 // ── DB fetch ──────────────────────────────────────────────────────────────────
 async function fetchEvents(extraction: Extraction): Promise<any[]> {
@@ -256,16 +287,23 @@ async function generateResponse(
   const formatInstructions: Record<string, string> = {
     answer: `
 FORMAT — Prose answer:
+- PLAIN TEXT ONLY. No markdown. No **bold**. No _italic_.
 - Max 100 words. Start with a direct answer to the question.
 - Be warm, avuncular, and analytical.`,
 
     list: `
-FORMAT — Timestamped event list:
-- Group events by IST date. Use "📅 DD-Mon" as a date header.
-- Under each date, list each event on its own line: time (IST) and key details.
-  e.g. "  • 02:15 AM — Poop (heavy)"  or  "  • 10:30 AM — Left breast, 18 min"
-- Skip days with no matching events.
-- End with a one-line total summary (e.g. "Total: 9 poops over 7 days").`,
+FORMAT — Raw timestamped event list. STRICT RULES:
+- PLAIN TEXT ONLY. No markdown. No **bold**. No _italic_. No # headers.
+- Group events by IST date. Use this exact header: "📅 DD-Mon"
+- Under each date, one event per line:
+    2 spaces + bullet + space + HH:MM AM/PM + dash + plain description
+  Examples:
+    • 02:15 AM — Poop (light, with pee)
+    • 10:30 AM — Left breast, 18 min
+    • 06:45 PM — Medicine: Gripe water 2.5ml
+- Skip days with zero events entirely.
+- End with ONE plain summary line. e.g. "Total: 2 poops on 1 day (27-May)"
+- DO NOT add any analysis, advice, medical commentary, or interpretation. Raw data only.`,
 
     file_text: `
 FORMAT — Clinical plain-text report:
@@ -427,13 +465,18 @@ Deno.serve(async (req) => {
     const response = await generateResponse(text, extraction, events, ageContext, envContext, history);
 
     // Deliver as file or message
+    const msgHeaders: Record<string, string> = {
+      answer: "🩺 <b>Expert Analysis</b>",
+      list:   "📋 <b>Event Log</b>",
+    };
     if (extraction.output_format === "file_text" || extraction.output_format === "file_markdown") {
       const ext      = extraction.output_format === "file_markdown" ? "md" : "txt";
       const filename = `baby-${extraction.from_date}-to-${extraction.to_date}.${ext}`;
       const caption  = `📋 <b>Baby Tracker Report</b>\n${formatDateDMY(extraction.from_date)} → ${formatDateDMY(extraction.to_date)} • ${events.length} events`;
       await sendDocument(chatId, filename, response, caption);
     } else {
-      await sendMessage(chatId, `🩺 <b>Expert Analysis</b>\n\n${response}`);
+      const header = msgHeaders[extraction.output_format] ?? "🩺 <b>Expert Analysis</b>";
+      await sendMessage(chatId, `${header}\n\n${response}`);
     }
 
     // Save assistant turn (fire-and-forget)
