@@ -50,31 +50,28 @@ function chunkText(text: string, maxLen: number): string[] {
   return chunks;
 }
 
-// ── Date helpers (IST) ────────────────────────────────────────────────────────
+// ── Date helpers ──────────────────────────────────────────────────────────────
 const IST = "Asia/Kolkata";
 
 function getISTDate(offsetDays = 0): string {
-  // Returns yyyy-mm-dd in IST
   const d = new Date(Date.now() + offsetDays * 86400000);
   return d.toLocaleDateString("en-CA", { timeZone: IST });
 }
 
-function formatDateDMY(isoDate: string): string {
-  const d = new Date(isoDate + "T12:00:00Z"); // noon to avoid DST edge
-  return `${String(d.getUTCDate()).padStart(2,"0")}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCFullYear()).slice(-2)}`;
-}
+// ── Gemini ────────────────────────────────────────────────────────────────────
+const INSIGHT_MODELS = [
+  "gemini-3.5-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-3-flash-preview",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+];
 
-// ── Gemini helpers ────────────────────────────────────────────────────────────
-const PROTOCOL_MODELS = ["gemma-4-26b-a4b-it", "gemini-3.1-flash-lite"];
-const INSIGHT_MODELS  = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite"];
-
-async function callGemini(prompt: string, models: string[], jsonMode = false): Promise<string> {
-  const mime = jsonMode ? "application/json" : "text/plain";
-  for (const modelName of models) {
+async function callGemini(prompt: string): Promise<string> {
+  for (const modelName of INSIGHT_MODELS) {
     try {
-      const model  = genAI.getGenerativeModel({
+      const model = genAI.getGenerativeModel({
         model: modelName,
-        generationConfig: { responseMimeType: mime },
         safetySettings: [
           { category: "HARM_CATEGORY_HARASSMENT",        threshold: "BLOCK_NONE" },
           { category: "HARM_CATEGORY_HATE_SPEECH",       threshold: "BLOCK_NONE" },
@@ -97,7 +94,6 @@ async function getBabyAge(): Promise<string> {
     .from("baby_events").select("start_time")
     .not("notes", "like", "SYSTEM_MSG%")
     .order("start_time", { ascending: true }).limit(1);
-
   if (!data?.[0]) return "<3 month old";
   const days  = Math.floor((Date.now() - new Date(data[0].start_time).getTime()) / 86400000);
   const weeks = Math.floor(days / 7);
@@ -105,32 +101,32 @@ async function getBabyAge(): Promise<string> {
 }
 
 async function getEnvContext(ageContext: string): Promise<string> {
-  const today = new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: IST });
+  const today = new Date().toLocaleDateString("en-IN", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: IST,
+  });
   try {
-    return await callGemini(
-      `Today is ${today}. Give a 2-sentence summary of CURRENT atmospheric and climate conditions TODAY that can affect a ${ageContext} baby girl's health in ${LOCATION}.`,
-      ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+    const r = await model.generateContent(
+      `Today is ${today}. Give a 2-sentence summary of CURRENT atmospheric/climate conditions TODAY that can affect a ${ageContext} baby girl's health in ${LOCATION}.`
     );
-  } catch {
-    return "No live environmental data available.";
-  }
+    return r.response.text();
+  } catch { return ""; }
 }
 
 // ── Conversation memory ───────────────────────────────────────────────────────
 interface ContextRow { role: string; content: string; }
 
 async function getContext(chatId: number): Promise<ContextRow[]> {
-  // IST midnight → UTC
   const istOffsetMs   = 5.5 * 60 * 60 * 1000;
   const istNowMs      = Date.now() + istOffsetMs;
   const todayStartUTC = new Date(istNowMs - (istNowMs % 86400000) - istOffsetMs).toISOString();
 
-  const { data: today } = await supabase
+  const { data: todayRows } = await supabase
     .from("telegram_context").select("role, content")
     .eq("chat_id", chatId).gte("created_at", todayStartUTC)
     .order("created_at", { ascending: true });
 
-  if (today && today.length >= 20) return today as ContextRow[];
+  if (todayRows && todayRows.length >= 20) return todayRows as ContextRow[];
 
   const { data: last20 } = await supabase
     .from("telegram_context").select("role, content")
@@ -144,226 +140,15 @@ async function saveContext(chatId: number, role: "user" | "assistant", content: 
   await supabase.from("telegram_context").insert({ chat_id: chatId, role, content });
 }
 
-function formatContextBlock(history: ContextRow[]): string {
-  if (!history.length) return "";
-  const lines = history.map(r => `${r.role === "user" ? "Parent" : "Assistant"}: ${r.content}`);
-  return `\n[Conversation history]\n${lines.join("\n")}\n[End of history]\n`;
-}
-
-// ── Phase 1: Protocol tier — single unified extraction ────────────────────────
-type OutputFormat = "answer" | "list" | "file_text" | "file_markdown" | "help";
-
-interface Extraction {
-  event_types:   string[];      // e.g. ["diaper"] or ["all"]
-  days_back:     number;        // how many days to look back (Gemma outputs this, TypeScript does the math)
-  from_date?:    string;        // yyyy-mm-dd — only set when user gives an explicit absolute start date
-  to_date?:      string;        // yyyy-mm-dd — only set when user gives an explicit absolute end date
-  output_format: OutputFormat;
-}
-
-async function extractIntent(message: string, today: string): Promise<Extraction & { resolvedFrom: string; resolvedTo: string }> {
-  const prompt = `
-You are a data extraction engine for a baby tracker Telegram bot.
-Today's date is ${today} (IST, yyyy-mm-dd).
-
-User message: "${message}"
-
-Output ONLY a raw JSON object with these exact keys:
-
-{
-  "event_types": array — MUST only contain values from this exact list:
-                 ["diaper", "mom_l", "mom_r", "top", "spit_up", "medicine", "weight"]
-                 Rules:
-                 - "poop", "pee", "nappy" are NOT valid — use "diaper" for ALL poop/pee/nappy questions.
-                 - ["mom_l","mom_r","top"] covers ALL feeding/breastfeeding questions.
-                 - Use ["all"] only when the request spans multiple unrelated types with no specific focus.
-
-  "days_back": integer — how many calendar days to look back FROM today (inclusive).
-               You are ONLY deciding the number — do NOT compute actual dates.
-               Examples: "today" → 1, "yesterday" → 2, "last 2 days" → 2,
-               "last 7 days" → 7, "last week" → 7, "last month" → 30,
-               "last 20 days" → 20, "past 3 weeks" → 21, "since Monday" → days since last Monday.
-               Default for "answer": 1. Default for "list" or "file_*": 7.
-
-  "from_date": null OR "yyyy-mm-dd" — ONLY set this if the user gave an explicit absolute
-               start date (e.g. "from May 21", "since the 15th", "May 21 to May 27").
-               If set, it overrides days_back for the start boundary.
-
-  "to_date": null OR "yyyy-mm-dd" — ONLY set if the user gave an explicit absolute end date.
-             Default: null (means today).
-
-  "output_format": one of:
-    "help"          — /start, /help, or asking what the bot can do
-    "answer"        — analytical question (e.g. "is this normal?", "when was last?", "how many?")
-    "list"          — user wants to SEE a log/timeline of events ("show me", "give me the logs", "list")
-    "file_text"     — wants a downloadable file for their doctor (.txt)
-    "file_markdown" — wants a downloadable file for ChatGPT (.md)
-}
-
-Examples:
-"give me poop logs last 7 days"  → {"event_types":["diaper"],"days_back":7,"from_date":null,"to_date":null,"output_format":"list"}
-"show me all feeds today"        → {"event_types":["mom_l","mom_r","top"],"days_back":1,"from_date":null,"to_date":null,"output_format":"list"}
-"when was her last feed?"        → {"event_types":["mom_l","mom_r","top"],"days_back":1,"from_date":null,"to_date":null,"output_format":"answer"}
-"is her spit up normal?"         → {"event_types":["spit_up"],"days_back":7,"from_date":null,"to_date":null,"output_format":"answer"}
-"give me logs last month"        → {"event_types":["all"],"days_back":30,"from_date":null,"to_date":null,"output_format":"list"}
-"poop logs last 20 days"         → {"event_types":["diaper"],"days_back":20,"from_date":null,"to_date":null,"output_format":"list"}
-"export May 21 to May 27"        → {"event_types":["all"],"days_back":7,"from_date":"2026-05-21","to_date":"2026-05-27","output_format":"file_text"}
-"export last 3 days for ChatGPT" → {"event_types":["all"],"days_back":3,"from_date":null,"to_date":null,"output_format":"file_markdown"}
-"/help"                          → {"event_types":["all"],"days_back":1,"from_date":null,"to_date":null,"output_format":"help"}
-`;
-
-  try {
-    const raw    = await callGemini(prompt, PROTOCOL_MODELS, true);
-    const parsed = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? raw) as Extraction;
-
-    // TypeScript does the one arithmetic step Gemma must not do
-    const days        = Math.max(1, parsed.days_back ?? 1);
-    const resolvedTo  = parsed.to_date   ?? today;
-    const resolvedFrom = parsed.from_date ?? getISTDate(-(days - 1));
-
-    console.log(`Extracted → types:${parsed.event_types} days_back:${days} from:${resolvedFrom} to:${resolvedTo} fmt:${parsed.output_format}`);
-    return { ...parsed, resolvedFrom, resolvedTo };
-  } catch {
-    return { event_types: ["all"], days_back: 1, resolvedFrom: today, resolvedTo: today, output_format: "answer" };
-  }
-}
-
-// ── DB fetch ──────────────────────────────────────────────────────────────────
-async function fetchEvents(resolvedFrom: string, resolvedTo: string, eventTypes: string[]): Promise<any[]> {
-  // Safety mapping: models sometimes output invalid type names — normalise them
-  const TYPE_MAP: Record<string, string> = {
-    poop: "diaper", pee: "diaper", nappy: "diaper", diaper_change: "diaper",
-    breast: "mom_l", breastfeed: "mom_l", bottle: "top", feed: "top",
-    spit: "spit_up", vomit: "spit_up", med: "medicine", medication: "medicine",
-  };
-  const normalised = [...new Set(
-    eventTypes.map(t => TYPE_MAP[t.toLowerCase()] ?? t)
-  )];
-  let query = supabase
+// ── Data fetch — last 30 days of all events ───────────────────────────────────
+async function fetchEvents(): Promise<any[]> {
+  const from = `${getISTDate(-29)}T00:00:00.000Z`;
+  const { data } = await supabase
     .from("baby_events").select("*")
-    .gte("start_time", `${resolvedFrom}T00:00:00.000Z`)
-    .lte("start_time", `${resolvedTo}T23:59:59.999Z`)
+    .gte("start_time", from)
     .not("notes", "like", "SYSTEM_MSG%")
     .order("start_time", { ascending: true });
-
-  if (!normalised.includes("all")) {
-    query = query.in("type", normalised);
-  }
-
-  const { data } = await query;
   return data || [];
-}
-
-// ── Phase 2: Insight tier — unified response generation ───────────────────────
-async function generateResponse(
-  question:   string,
-  extraction: Extraction,
-  events:     any[],
-  ageContext: string,
-  envContext: string,
-  history:    ContextRow[]
-): Promise<string> {
-
-  const currentLocalTime = new Date().toLocaleString("en-IN", {
-    timeZone: IST, dateStyle: "full", timeStyle: "long"
-  });
-
-  const priorHistory = history
-    .filter(r => !(r.role === "user" && r.content === question))
-    .slice(-40);
-  const contextBlock = formatContextBlock(priorHistory);
-
-  const dateRange = extraction.from_date === extraction.to_date
-    ? formatDateDMY(extraction.from_date)
-    : `${formatDateDMY(extraction.from_date)} → ${formatDateDMY(extraction.to_date)}`;
-
-  const formatInstructions: Record<string, string> = {
-    answer: `
-FORMAT — Prose answer:
-- PLAIN TEXT ONLY. No markdown. No **bold**. No _italic_.
-- Max 100 words. Start with a direct answer to the question.
-- Be warm, avuncular, and analytical.`,
-
-    list: `
-FORMAT — Raw timestamped event list. STRICT RULES:
-- PLAIN TEXT ONLY. No markdown. No **bold**. No _italic_. No # headers.
-- Group events by IST date. Use this exact header: "📅 DD-Mon"
-- Under each date, one event per line:
-    2 spaces + bullet + space + HH:MM AM/PM + dash + plain description
-  Examples:
-    • 02:15 AM — Poop (light, with pee)
-    • 10:30 AM — Left breast, 18 min
-    • 06:45 PM — Medicine: Gripe water 2.5ml
-- Skip days with zero events entirely.
-- End with ONE plain summary line. e.g. "Total: 2 poops on 1 day (27-May)"
-- DO NOT add any analysis, advice, medical commentary, or interpretation. Raw data only.`,
-
-    file_text: `
-FORMAT — Clinical plain-text report:
-Generate a structured report using exactly this layout:
-
-👶 Baby Tracker Clinical Report (${dateRange})
-=============================================
-
-🍼 FEEDING SUMMARY:
-[feeding counts, volumes, averages — skip section if no feeding events]
-
-🧷 DIAPER DETAILS:
-[wet count, dirty count, diaper-free sessions — skip if no diaper events]
-
-💊 MEDICATIONS ADMINISTERED:
-[med name: doses, times — skip section entirely if no medicine events]
-
-🤢 GENERAL HEALTH:
-[spit-up count minor/major, weights if any]
-
-Be thorough and clinical. Use bullet points (•) for each data point.`,
-
-    file_markdown: `
-FORMAT — Structured Markdown report for ChatGPT analysis:
-Generate a full markdown document using this layout:
-
-# 👶 Baby Tracker Log Report
-**Date Scope:** ${dateRange}
-*Generated for ChatGPT pediatric analysis*
-
-## 🍼 Feeding Metrics
-[Markdown table with columns: Dimension | Value | Details]
-
-## 🧷 Diaper Changes
-[Markdown table with columns: Type | Count | Notes]
-
-## 💊 Medications
-[Bullet list — skip if no medicine events]
-
-## 🩺 Clinical / Health Status
-[Spit-ups, weights — bullet points]
-
-Be thorough. Use proper markdown syntax.`,
-  };
-
-  const prompt = `
-You are a pediatric expert assistant for the parents of a ${ageContext} newborn girl.
-CRITICAL: Factor the baby's exact age (${ageContext}) into all physiological and developmental reasoning.
-
-CURRENT TIME (IST): ${currentLocalTime}
-CURRENT ENVIRONMENT (Gurgaon): ${envContext}
-
-TIMEZONE RULE: All log timestamps are UTC (ending in 'Z'). Convert to IST (UTC+05:30) before displaying any times. Always show IST — never mention UTC or Z timestamps to the parents.
-NOTE: type='medicine' events represent doses given to the baby. The medicine name/dosage is in the 'notes' field.
-NOTE: For type='diaper' events — 'poop_amount' != 'none' means a poop occurred. 'pee_amount' != 'none' means a pee occurred.
-${contextBlock}
-CURRENT REQUEST: "${question}"
-DATE RANGE: ${dateRange} (${events.length} matching events)
-BABY LOGS: ${JSON.stringify(events)}
-
-${formatInstructions[extraction.output_format] ?? formatInstructions.answer}
-
-GENERAL RULES:
-- Use conversation history to resolve references like "that", "the last one", "she".
-- Factor environment only if directly relevant to the question.`;
-
-  return await callGemini(prompt, INSIGHT_MODELS);
 }
 
 // ── Help message ──────────────────────────────────────────────────────────────
@@ -372,31 +157,31 @@ async function sendHelp(chatId: number) {
 
 Same bot that sends your notifications — now two-way.
 
-<b>🔍 Ask Me Anything</b>
-• <i>"When was her last feed?"</i>
-• <i>"How many wet diapers today?"</i>
-• <i>"Is her poop frequency normal?"</i>
-• <i>"She spit up a lot — should I worry?"</i>
+Just talk to me naturally. Examples:
 
-<b>📋 View Event Logs</b>
-• <i>"Give me poop logs for last 7 days"</i>
-• <i>"Show me all feeds since yesterday"</i>
-• <i>"List medicines given this week"</i>
+<b>Questions</b>
+• "When was her last feed?"
+• "How many wet diapers today?"
+• "Is her poop frequency normal?"
 
-<b>📄 Export as File</b>
-• <i>"Export last 7 days for my doctor"</i>   → .txt
-• <i>"Export last 3 days for ChatGPT"</i>     → .md
-• <i>"Export poop data last 5 days"</i>       → filtered .txt`);
+<b>Logs</b>
+• "Give me poop logs for last 7 days"
+• "Show me all feeds since yesterday"
+• "List medicines given this week"
+
+<b>Export as file</b>
+• "Export last 7 days for my doctor"
+• "Export last 3 days for ChatGPT"
+• "Export poop logs last 5 days for doctor"`);
 }
 
-// ── Entry point ───────────────────────────────────────────────────────────────
+// ── Main handler ──────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   const url = new URL(req.url);
 
-  // Webhook self-registration
   if (req.method === "GET" && url.searchParams.get("register") === "1") {
     const webhookUrl = `https://vyaleoetmmxjsykirfop.supabase.co/functions/v1/telegram-bot`;
-    const res  = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook`, {
+    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: webhookUrl, allowed_updates: ["message"] }),
@@ -406,75 +191,94 @@ Deno.serve(async (req) => {
     });
   }
 
-  if (req.method === "GET") {
-    return new Response("Baby Tracker Telegram Bot is running. GET ?register=1 to set webhook.", { status: 200 });
-  }
-
+  if (req.method === "GET") return new Response("Baby Tracker bot running. GET ?register=1 to set webhook.", { status: 200 });
   if (req.method !== "POST") return new Response("Method not allowed.", { status: 405 });
 
   let update: any;
   try { update = await req.json(); } catch { return new Response("Bad request", { status: 400 }); }
 
-  const message = update?.message;
-  if (!message?.text) return new Response("ok");
+  const msg = update?.message;
+  if (!msg?.text) return new Response("ok");
 
-  const chatId = message.chat.id as number;
-  const text   = (message.text as string).trim();
-  const today  = getISTDate();
+  const chatId = msg.chat.id as number;
+  const text   = (msg.text as string).trim();
+  const lower  = text.toLowerCase();
 
   console.log(`[${chatId}] ${text}`);
 
+  // Help
+  if (lower === "/start" || lower === "/help" || lower === "start" || lower === "help") {
+    await sendHelp(chatId);
+    return new Response("ok");
+  }
+
+  // Is this a file export request? (delivery mechanism only — Gemini still generates content)
+  const isExport = /\b(export|download|send.*file|for.*doctor|for.*chatgpt)\b/.test(lower);
+
+  saveContext(chatId, "user", text).catch(console.error);
+  await sendMessage(chatId, "🔍 <i>Analysing logs…</i>");
+
   try {
-    // ── Phase 1: Protocol tier — extract intent + data requirements ──
-    const extraction = await extractIntent(text, today);
-    console.log("Extraction:", JSON.stringify(extraction));
-
-    // Help requires no DB or AI — respond immediately
-    if (extraction.output_format === "help") {
-      await sendHelp(chatId);
-      return new Response("ok");
-    }
-
-    // Save user turn (fire-and-forget)
-    saveContext(chatId, "user", text).catch(console.error);
-    await sendMessage(chatId, "🔍 <i>Analysing logs…</i>");
-
-    // Fetch everything in parallel
     const [ageContext, envContext, history, events] = await Promise.all([
       getBabyAge(),
       getBabyAge().then(a => getEnvContext(a)),
       getContext(chatId),
-      fetchEvents(extraction),
+      fetchEvents(),
     ]);
 
-    if (!events.length) {
-      await sendMessage(chatId,
-        `⚠️ No events found for <b>${extraction.event_types.join(", ")}</b> between <b>${formatDateDMY(extraction.from_date)}</b> and <b>${formatDateDMY(extraction.to_date)}</b>.`
-      );
-      return new Response("ok");
-    }
+    const currentLocalTime = new Date().toLocaleString("en-IN", {
+      timeZone: IST, dateStyle: "full", timeStyle: "long",
+    });
 
-    // ── Phase 2: Insight tier — generate response ──
-    const response = await generateResponse(text, extraction, events, ageContext, envContext, history);
+    const contextBlock = history.length
+      ? `\n[Conversation history]\n${history.filter(r => !(r.role === "user" && r.content === text)).slice(-40).map(r => `${r.role === "user" ? "Parent" : "Assistant"}: ${r.content}`).join("\n")}\n[End of history]\n`
+      : "";
 
-    // Deliver as file or message
-    const msgHeaders: Record<string, string> = {
-      answer: "🩺 <b>Expert Analysis</b>",
-      list:   "📋 <b>Event Log</b>",
-    };
-    if (extraction.output_format === "file_text" || extraction.output_format === "file_markdown") {
-      const ext      = extraction.output_format === "file_markdown" ? "md" : "txt";
-      const filename = `baby-${extraction.from_date}-to-${extraction.to_date}.${ext}`;
-      const caption  = `📋 <b>Baby Tracker Report</b>\n${formatDateDMY(extraction.from_date)} → ${formatDateDMY(extraction.to_date)} • ${events.length} events`;
-      await sendDocument(chatId, filename, response, caption);
+    const formatRule = isExport
+      ? `OUTPUT FORMAT — The user wants a file to share. Generate a thorough, structured plain-text clinical report with sections: FEEDING SUMMARY, DIAPER DETAILS (pee + poop separately), MEDICATIONS, GENERAL HEALTH. Use bullet points. Be clinical and complete.`
+      : `OUTPUT FORMAT — Read the request and respond appropriately:
+- If they want a LIST or LOG of events: respond with a clean day-by-day timestamped list grouped by IST date. Use "📅 DD-Mon" as a date header. One event per line: "  • HH:MM AM/PM — details". End with a one-line total count. PLAIN TEXT ONLY — no markdown bold, no asterisks.
+- If they're asking a QUESTION: answer concisely in plain text, max 100 words. Start with a direct answer.
+In both cases: no markdown formatting, no asterisks, no **bold**.`;
+
+    const prompt = `You are a pediatric expert assistant for the parents of a ${ageContext} newborn girl in Gurgaon.
+CRITICAL: Factor the baby's exact age (${ageContext}) into all reasoning.
+
+CURRENT TIME (IST): ${currentLocalTime}
+${envContext ? `CURRENT ENVIRONMENT: ${envContext}` : ""}
+
+TIMEZONE: All log timestamps are stored in UTC (ending in 'Z'). Convert to IST (+05:30) before showing any times. Never mention UTC to the parents.
+
+EVENT TYPE GUIDE:
+- type="diaper": diaper change. poop_amount field tells you if there was poop (any value other than "none" = poop occurred). pee_amount field tells you if there was pee.
+- type="mom_l" or "mom_r": breastfeed on left/right breast. duration_minutes in the record.
+- type="top": bottle/top-up feed.
+- type="spit_up": spit-up event. severity in notes.
+- type="medicine": dose given to baby. medicine name and dosage in the notes field.
+- type="weight": weight measurement.
+${contextBlock}
+PARENT'S REQUEST: "${text}"
+
+BABY LOGS (last 30 days, ${events.length} events): ${JSON.stringify(events)}
+
+${formatRule}
+
+RULES:
+- Use conversation history to resolve references ("that", "the last one", "she").
+- Only show events relevant to the request — filter by type, date range, and sub-type (e.g. poop vs pee) as needed.
+- Factor environment only if directly relevant.`;
+
+    const response = await callGemini(prompt);
+
+    if (isExport) {
+      const today = getISTDate();
+      const filename = `baby-report-${today}.txt`;
+      await sendDocument(chatId, filename, response, `📋 <b>Baby Tracker Report</b>`);
     } else {
-      const header = msgHeaders[extraction.output_format] ?? "🩺 <b>Expert Analysis</b>";
-      await sendMessage(chatId, `${header}\n\n${response}`);
+      await sendMessage(chatId, response);
     }
 
-    // Save assistant turn (fire-and-forget)
     saveContext(chatId, "assistant", response).catch(console.error);
-
   } catch (err: any) {
     console.error("Error:", err.message);
     await sendMessage(chatId, "⚠️ Something went wrong. Please try again.");
