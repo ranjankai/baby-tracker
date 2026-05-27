@@ -101,11 +101,11 @@ An AI-native, mobile-first baby tracker that transitions from a simple logger to
 - [DONE] **26-05-26**: Added Section IX (First Time Right - FTR Protocol) to global rules and addressed minor MECE gaps to enforce rigorous multi-layer feature audit verification.
 - [DONE] **27-05-26**: Added Spit-up intensity selection to the Edit Activity modal, allowing fluid editing of minor/major spit ups.
 - [DONE] **27-05-26**: Converted all discrete button grids to premium continuous segmented sliding controls (segmented toggles) with dynamic active background indicator transitions (in Edit Modal and Quick Log panels).
-- [DONE] **27-05-26**: Implemented the Smart Log Exporter featuring a breakthrough dynamic sliding-window date selector (effortless single date defaulting + dynamic range window extensions), clipboard copier for Doctor/ChatGPT formats, and full clinical print-to-PDF stylesheets.
-- [DONE] **27-05-26**: Upgraded the main dashboard date filter chip to support dynamic "From → To" date range filtering, opening a premium interactive bottom-sheet modal using our signature sliding-window date selector (effortless single date defaulting + dynamic range window extensions).
+- [DONE] **27-05-26**: Implemented the Smart Log Exporter (clipboard copier for Doctor/ChatGPT formats and full clinical print-to-PDF stylesheets) featuring our premium dynamic coordinated "From → To" date calendar pickers.
+- [DONE] **27-05-26**: Upgraded the main dashboard date filter chip to support dynamic "From → To" date range filtering, opening a premium interactive bottom-sheet modal using our signature coordinated "From → To" date calendar pickers (effortless single date defaulting + dynamic range boundaries).
 
 ## 🐛 Open Bugs
 - None currently known.
 
 ---
-*Last Updated: 27-05-26 (Date range filters, log exporter, segmented controls)*
+*Last Updated: 27-05-26 (Unified date range filters, log exporter, segmented controls)*
