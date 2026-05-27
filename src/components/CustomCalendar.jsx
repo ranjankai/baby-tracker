@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, ArrowRight } from 'lucide-react';
 
 export default function CustomCalendar({ fromDate, toDate, onChangeRange, firstDate, today }) {
   // Determine starting view month based on fromDate
@@ -147,14 +147,18 @@ export default function CustomCalendar({ fromDate, toDate, onChangeRange, firstD
         <button 
           className={`calendar-toggle-btn ${activeTab === 'from' ? 'active' : ''}`}
           onClick={() => setActiveTab('from')}
+          aria-label="From Date"
+          title="From Date"
         >
-          From Date
+          <Calendar size={18} />
         </button>
         <button 
           className={`calendar-toggle-btn ${activeTab === 'to' ? 'active' : ''}`}
           onClick={() => setActiveTab('to')}
+          aria-label="To Date"
+          title="To Date"
         >
-          To Date
+          <ArrowRight size={18} />
         </button>
       </div>
 
