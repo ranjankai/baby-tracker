@@ -138,6 +138,7 @@ const getLocalDate = () => {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function EventList() {
+  const today = getLocalDate();
   const {
     events, updateEvent, deleteEvent,
     page, setPage, totalCount, PAGE_SIZE,
@@ -230,7 +231,6 @@ export default function EventList() {
   }, [filters, dateFilter]);
 
   // ── helpers ─────────────────────────────────────────────────────────────
-  const today = getLocalDate();
   const firstDate = allTimeStats.firstEventTime
     ? new Date(new Date(allTimeStats.firstEventTime).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0]
     : '2024-01-01';
