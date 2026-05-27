@@ -168,7 +168,7 @@ export default function EventList() {
   // Date Picker Range Modal state & logic
   const [showDatePickerModal, setShowDatePickerModal] = useState(false);
   const [pickerFromDate, setPickerFromDate]           = useState(getLocalDate());
-  const [pickerWindowOffset, setPickerWindowOffset]   = useState(0);
+  const [pickerToDate, setPickerToDate]               = useState(getLocalDate());
 
   const formatChipDate = (isoStr) => {
     if (!isoStr) return '';
@@ -183,14 +183,15 @@ export default function EventList() {
         if (dateFilter.includes(':')) {
           const [from, to] = dateFilter.split(':');
           setPickerFromDate(from);
-          setPickerWindowOffset(getDaysBetween(from, to));
+          setPickerToDate(to);
         } else {
           setPickerFromDate(dateFilter);
-          setPickerWindowOffset(0);
+          setPickerToDate(dateFilter);
         }
       } else {
-        setPickerFromDate(getLocalDate());
-        setPickerWindowOffset(0);
+        const localToday = getLocalDate();
+        setPickerFromDate(localToday);
+        setPickerToDate(localToday);
       }
     }
   }, [showDatePickerModal, dateFilter]); // eslint-disable-line
@@ -934,39 +935,28 @@ export default function EventList() {
               onChange={(e) => {
                 const newFrom = e.target.value;
                 setPickerFromDate(newFrom);
-                const newMax = getDaysBetween(newFrom, today);
-                if (pickerWindowOffset > newMax) {
-                  setPickerWindowOffset(newMax);
+                if (new Date(pickerToDate) < new Date(newFrom)) {
+                  setPickerToDate(newFrom);
                 }
               }}
               style={{ marginBottom: '20px' }}
             />
 
-            {/* Sliding Window Range Selector */}
-            <div className="range-slider-container">
-              <div className="range-slider-header">
-                <span className="range-slider-label">Window Duration</span>
-                <span className="range-slider-value">
-                  {pickerWindowOffset === 0 ? 'Single Day' : `+${pickerWindowOffset} Day${pickerWindowOffset > 1 ? 's' : ''}`}
-                </span>
-              </div>
-              <input 
-                type="range" 
-                className="slider-input" 
-                min="0" 
-                max={getDaysBetween(pickerFromDate, today)} 
-                value={pickerWindowOffset}
-                onChange={(e) => setPickerWindowOffset(parseInt(e.target.value))}
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)' }}>
-                <span>{formatDateDMY(pickerFromDate)} (From)</span>
-                <span>{formatDateDMY(getEndDateFromOffset(pickerFromDate, pickerWindowOffset))} (To)</span>
-              </div>
-            </div>
+            {/* To Date Picker */}
+            <span className="intensity-label" style={{ marginBottom: '8px' }}>To Date</span>
+            <input 
+              type="date" 
+              className="input-field" 
+              value={pickerToDate} 
+              min={pickerFromDate} 
+              max={today}
+              onChange={(e) => setPickerToDate(e.target.value)}
+              style={{ marginBottom: '20px' }}
+            />
 
             {/* Preview of range selection */}
             <div style={{ padding: '12px', background: 'var(--primary-light)', borderRadius: '12px', color: 'var(--primary)', fontWeight: '700', fontSize: '14px', textAlign: 'center', marginBottom: '20px' }}>
-              Range: {formatChipDate(pickerFromDate)} {pickerWindowOffset > 0 ? `→ ${formatChipDate(getEndDateFromOffset(pickerFromDate, pickerWindowOffset))}` : ''}
+              Range: {formatChipDate(pickerFromDate)} {pickerFromDate !== pickerToDate ? `→ ${formatChipDate(pickerToDate)}` : ''}
             </div>
 
             {/* Action buttons */}
@@ -985,8 +975,7 @@ export default function EventList() {
                 className="button-primary" 
                 style={{ background: 'var(--primary)', color: 'white', border: 'none' }}
                 onClick={() => {
-                  const toDate = getEndDateFromOffset(pickerFromDate, pickerWindowOffset);
-                  const filterVal = pickerWindowOffset === 0 ? pickerFromDate : `${pickerFromDate}:${toDate}`;
+                  const filterVal = pickerFromDate === pickerToDate ? pickerFromDate : `${pickerFromDate}:${pickerToDate}`;
                   setGotoDate(filterVal);
                   setShowDatePickerModal(false);
                 }}
