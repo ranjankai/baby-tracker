@@ -344,10 +344,10 @@ export default function QuickLog() {
               <Square size={20} fill="currentColor" />
             </button>
             <button className="button-primary"
-              onClick={activeFeed.is_paused ? handleResumeFeed : handlePauseFeed}
+              onPointerDown={e => { e.preventDefault(); if (!isPausing) (activeFeed.is_paused ? handleResumeFeed : handlePauseFeed)(); }}
               title={activeFeed.is_paused ? 'Resume' : 'Pause'}
               disabled={isPausing}
-              style={{ background: activeFeed.is_paused ? 'var(--secondary)' : '#f3f0ff', color: activeFeed.is_paused ? 'white' : 'var(--primary)', padding: '0', flex: 1, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '14px', border: 'none', cursor: isPausing ? 'not-allowed' : 'pointer', opacity: isPausing ? 0.5 : 1, transition: 'opacity 0.15s' }}>
+              style={{ background: activeFeed.is_paused ? 'var(--secondary)' : '#f3f0ff', color: activeFeed.is_paused ? 'white' : 'var(--primary)', padding: '0', flex: 1, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '14px', border: 'none', cursor: isPausing ? 'not-allowed' : 'pointer', opacity: isPausing ? 0.5 : 1, transition: 'opacity 0.15s', touchAction: 'manipulation' }}>
               {activeFeed.is_paused ? <Play size={20} fill="currentColor" /> : <Pause size={20} fill="currentColor" />}
             </button>
             <div className={`metric-pill ${activeFeed.is_paused ? 'amber' : 'lavender'}`} style={{ fontWeight: '700', gap: '6px', height: '48px', padding: '0 16px', borderRadius: '14px', flexShrink: 0, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}>

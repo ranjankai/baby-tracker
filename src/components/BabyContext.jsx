@@ -176,6 +176,10 @@ export function BabyProvider({ children }) {
 
   const updateEvent = async (id, updates) => {
     if (!supabase) return false;
+    // Optimistic: update lastFeed immediately if this is the active feed.
+    // This lets QuickLog's useEffect([lastFeed]) fire instantly without waiting
+    // for the DB round-trip + realtime + fetchGlobalState chain.
+    setLastFeed(prev => prev?.id === id ? { ...prev, ...updates } : prev);
     const { data } = await supabase.from('baby_events').update(updates).eq('id', id).select();
     return !!data;
   };
