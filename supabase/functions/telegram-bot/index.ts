@@ -306,6 +306,53 @@ async function getEnvironmentContext(ageContext: string): Promise<string> {
   }
 }
 
+// ── Conversation memory ──────────────────────────────────────────────────────
+interface ContextRow { role: string; content: string; }
+
+/** Returns conversation history: all of today (IST) OR last 20 — whichever is more messages. */
+async function getContext(chatId: number): Promise<ContextRow[]> {
+  // Compute IST midnight as a UTC ISO string
+  const nowMs       = Date.now();
+  const istOffsetMs = 5.5 * 60 * 60 * 1000;
+  const istNowMs    = nowMs + istOffsetMs;
+  const istMidnightMs = istNowMs - (istNowMs % 86400000); // floor to day boundary in IST
+  const todayStartUTC = new Date(istMidnightMs - istOffsetMs).toISOString();
+
+  // Fetch everything logged today in this chat (IST day)
+  const { data: todayRows } = await supabase
+    .from("telegram_context")
+    .select("role, content")
+    .eq("chat_id", chatId)
+    .gte("created_at", todayStartUTC)
+    .order("created_at", { ascending: true });
+
+  if (todayRows && todayRows.length >= 20) {
+    return todayRows as ContextRow[];
+  }
+
+  // Fewer than 20 messages today — pad with older messages up to 20 total
+  const { data: last20 } = await supabase
+    .from("telegram_context")
+    .select("role, content")
+    .eq("chat_id", chatId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  return ((last20 || []).reverse()) as ContextRow[];
+}
+
+/** Persists a single turn (user or assistant) to the context table. */
+async function saveContext(chatId: number, role: "user" | "assistant", content: string): Promise<void> {
+  await supabase.from("telegram_context").insert({ chat_id: chatId, role, content });
+}
+
+/** Formats conversation history into a readable block for the Gemini prompt. */
+function formatContextBlock(history: ContextRow[]): string {
+  if (!history.length) return "";
+  const lines = history.map(r => `${r.role === "user" ? "Parent" : "Assistant"}: ${r.content}`);
+  return `\n[Conversation so far today]\n${lines.join("\n")}\n[End of conversation history]\n`;
+}
+
 // ── Intent classifier ─────────────────────────────────────────────────────────
 interface Intent {
   type: "query" | "export" | "help";
@@ -379,12 +426,15 @@ Notifications from this bot continue as before — this just adds a two-way conv
 async function handleQuery(chatId: number, question: string) {
   await sendMessage(chatId, "🔍 <i>Analysing logs…</i>");
 
-  const [ageContext, envContext] = await Promise.all([
+  // ── Save user turn & fetch conversation context in parallel with data fetches ──
+  const [, ageContext, envContext, history] = await Promise.all([
+    saveContext(chatId, "user", question),
     getBabyAge(),
     getBabyAge().then(a => getEnvironmentContext(a)),
+    getContext(chatId),
   ]);
 
-  // Fetch deep history
+  // Fetch deep baby event history
   const { data: rawEvents } = await supabase
     .from("baby_events")
     .select("*")
@@ -413,8 +463,13 @@ Output ONLY a JSON object: {"event_types": array of strings from ["diaper","mom_
 
   const currentLocalTime = new Date().toLocaleString("en-IN", { timeZone: IST, dateStyle: "full", timeStyle: "long" });
 
+  // Build conversation history block (excludes the current message which was just saved)
+  // Slice off the last row if it's the message we just saved (avoid double-counting)
+  const priorHistory = history.filter(r => !(r.role === "user" && r.content === question)).slice(-40);
+  const contextBlock = formatContextBlock(priorHistory);
+
   const insightPrompt = `
-You are a pediatric expert assistant answering a question from the parents of a ${ageContext} newborn girl.
+You are a pediatric expert assistant answering questions from the parents of a ${ageContext} newborn girl in an ongoing conversation.
 CRITICAL INSTRUCTION: You MUST heavily factor the baby's exact age (${ageContext}) into any physiological, digestive, or developmental reasoning.
 
 CURRENT LOCAL TIME (IST): ${currentLocalTime}
@@ -423,16 +478,20 @@ CURRENT ENVIRONMENTAL CONTEXT: ${envContext}
 CRITICAL TIMEZONE RULE: Timestamps in the JSON logs below are UTC (ending in 'Z'). Mentally convert to IST (UTC+05:30) before analysing. When mentioning times, always use IST (e.g., "1:30 AM", "4:15 PM") — never say UTC.
 
 NOTE: Events with type 'medicine' represent doses given to the baby. The medicine name and dosage are in the 'notes' field.
-TASK: Answer this parent's question: "${question}" based on these baby logs: ${JSON.stringify(filtered)}
+${contextBlock}
+CURRENT QUESTION: "${question}"
+BABY LOGS: ${JSON.stringify(filtered)}
 
 RULES:
-- Your FIRST sentence must directly and specifically answer the question asked.
+- If the conversation history exists, use it to understand context (e.g. what "that" or "she" refers to).
+- Your FIRST sentence must directly and specifically answer the current question.
 - Be warm, avuncular, and analytical — no generic advice.
 - Max 100 words.
 - Factor the CURRENT ENVIRONMENT only if directly relevant.`;
 
+  let answer = "";
   try {
-    const answer = await callGemini(insightPrompt, [
+    answer = await callGemini(insightPrompt, [
       "gemini-3.5-flash",
       "gemini-3.1-flash-lite",
       "gemini-3-flash-preview",
@@ -441,8 +500,12 @@ RULES:
     ]);
     await sendMessage(chatId, `🩺 <b>Expert Analysis</b>\n\n${answer}`);
   } catch {
-    await sendMessage(chatId, "⚠️ Expert AI is temporarily unavailable. Please try again in a moment.");
+    answer = "Expert AI is temporarily unavailable. Please try again in a moment.";
+    await sendMessage(chatId, `⚠️ ${answer}`);
   }
+
+  // Save bot reply to context (fire-and-forget)
+  saveContext(chatId, "assistant", answer).catch(console.error);
 }
 
 async function handleExport(chatId: number, intent: Intent) {
