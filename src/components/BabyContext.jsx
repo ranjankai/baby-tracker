@@ -24,6 +24,25 @@ export function BabyProvider({ children }) {
   const [aiInsights, setAiInsights] = useState(null);
   const [weightLogs, setWeightLogs] = useState([]);
 
+  // Tummy and Massage customizable targets (in minutes, persisted)
+  const [tummyTarget, setTummyTargetState] = useState(() => {
+    const saved = localStorage.getItem('baby_tracker_tummy_target');
+    return saved ? parseInt(saved, 10) : 15;
+  });
+  const [massageTarget, setMassageTargetState] = useState(() => {
+    const saved = localStorage.getItem('baby_tracker_massage_target');
+    return saved ? parseInt(saved, 10) : 15;
+  });
+
+  const setTummyTarget = (mins) => {
+    setTummyTargetState(mins);
+    localStorage.setItem('baby_tracker_tummy_target', mins);
+  };
+  const setMassageTarget = (mins) => {
+    setMassageTargetState(mins);
+    localStorage.setItem('baby_tracker_massage_target', mins);
+  };
+
   const stateRef = useRef({ page: 0, filters: [], dateFilter: null });
   useEffect(() => {
     stateRef.current = { page, filters, dateFilter };
@@ -255,7 +274,8 @@ export function BabyProvider({ children }) {
     <BabyContext.Provider value={{
       events, addEvent, updateEvent, deleteEvent, loading, allTimeStats, aiInsights,
       page, setPage, totalCount, PAGE_SIZE, filters, toggleFilter, dateFilter, setGotoDate,
-      lastFeed, activeTummyTime, activeMassage, metrics, restoreFromTrash, fetchDeletedEvents, fetchEventsForRange, weightLogs // Export range fetch
+      lastFeed, activeTummyTime, activeMassage, metrics, restoreFromTrash, fetchDeletedEvents, fetchEventsForRange, weightLogs,
+      tummyTarget, massageTarget, setTummyTarget, setMassageTarget
     }}>
       {children}
     </BabyContext.Provider>

@@ -41,7 +41,17 @@ function InlineComment({ value, onChange }) {
 
 // ────────────────────────────────────────────────────────────────────────────
 export default function QuickLog() {
-  const { addEvent, updateEvent, events, lastFeed, activeTummyTime, activeMassage, metrics } = useBaby();
+  const { 
+    addEvent, 
+    updateEvent, 
+    events, 
+    lastFeed, 
+    activeTummyTime, 
+    activeMassage, 
+    metrics,
+    tummyTarget,
+    massageTarget
+  } = useBaby();
 
   // ── Active feed/timed session: the latest session event without an end_time. ────
   const [activeFeed, setActiveFeed] = useState(null);
@@ -88,10 +98,10 @@ export default function QuickLog() {
     if (lastFeed && isFeed(lastFeed.type) && !lastFeed.end_time) {
       setActiveFeed({ ...lastFeed, isCountdown: false });
     } else if (activeTummyTime) {
-      const remainingQuota = Math.max(0, 900 - (metrics?.tummyTimeTodaySeconds || 0));
+      const remainingQuota = Math.max(0, (tummyTarget * 60) - (metrics?.tummyTimeTodaySeconds || 0));
       setActiveFeed({ ...activeTummyTime, isCountdown: true, maxDuration: remainingQuota });
     } else if (activeMassage) {
-      const remainingQuota = Math.max(0, 900 - (metrics?.massageTodaySeconds || 0));
+      const remainingQuota = Math.max(0, (massageTarget * 60) - (metrics?.massageTodaySeconds || 0));
       setActiveFeed({ ...activeMassage, isCountdown: true, maxDuration: remainingQuota });
     } else {
       setActiveFeed(null);
@@ -108,7 +118,7 @@ export default function QuickLog() {
     let totalPaused = session.total_paused_ms || 0;
     // Set end_time to exactly maxDuration + totalPaused after start_time
     const startMs = new Date(session.start_time).getTime();
-    const endTime = new Date(startMs + (session.maxDuration || 900) * 1000 + totalPaused).toISOString();
+    const endTime = new Date(startMs + (session.maxDuration || (session.type === 'tummy_time' ? tummyTarget * 60 : massageTarget * 60)) * 1000 + totalPaused).toISOString();
 
     await updateEvent(session.id, { 
       end_time: endTime,
@@ -138,7 +148,7 @@ export default function QuickLog() {
 
       if (activeFeed.isCountdown) {
         // Reverse timer from 15:00
-        const remaining = (activeFeed.maxDuration || 900) - elapsedSeconds;
+        const remaining = (activeFeed.maxDuration || (activeFeed.type === 'tummy_time' ? tummyTarget * 60 : massageTarget * 60)) - elapsedSeconds;
         return Math.max(0, remaining);
       } else {
         return elapsedSeconds;
