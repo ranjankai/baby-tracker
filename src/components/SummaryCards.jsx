@@ -15,7 +15,7 @@ export default function SummaryCards() {
     setMassageTarget 
   } = useBaby();
 
-  const [isTargetModalOpen, setIsTargetModalOpen] = useState(false);
+  const [activeTargetModal, setActiveTargetModal] = useState(null); // 'tummy', 'massage', or null
   const [tempTummyTarget, setTempTummyTarget] = useState(tummyTarget);
   const [tempMassageTarget, setTempMassageTarget] = useState(massageTarget);
   // Use pre-calculated metrics from context if available, otherwise show empty state
@@ -108,36 +108,35 @@ export default function SummaryCards() {
       </div>
 
       {/* Tummy Time */}
-      <div className="card summary-card" style={{ position: 'relative' }}>
-        <button 
-          onClick={() => {
-            setTempTummyTarget(tummyTarget);
-            setTempMassageTarget(massageTarget);
-            setIsTargetModalOpen(true);
-          }}
-          style={{
-            position: 'absolute',
-            top: '8px',
-            right: '8px',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'var(--text-muted)',
-            opacity: 0.4,
-            padding: '4px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: '50%',
-            transition: 'opacity 0.2s',
-          }}
-          className="icon-action-btn"
-          title="Edit Daily Goals"
-        >
-          <Settings size={12} />
-        </button>
-        <div className="metric-pill mint" style={pillStyle}>
+      <div className="card summary-card">
+        <div className="metric-pill mint" style={{ ...pillStyle, position: 'relative' }}>
           <TummyTime size={14} /> Tummy
+          <button 
+            onClick={() => {
+              setTempTummyTarget(tummyTarget);
+              setActiveTargetModal('tummy');
+            }}
+            style={{
+              position: 'absolute',
+              right: '8px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'inherit',
+              opacity: 0.6,
+              padding: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '50%',
+              transition: 'opacity 0.2s',
+            }}
+            title="Edit Tummy Goal"
+          >
+            <Settings size={12} />
+          </button>
         </div>
         <div style={{ fontSize: '15px', fontWeight: '700', marginBottom: '4px' }}>
           {(() => {
@@ -160,36 +159,35 @@ export default function SummaryCards() {
       </div>
 
       {/* Massage */}
-      <div className="card summary-card" style={{ position: 'relative' }}>
-        <button 
-          onClick={() => {
-            setTempTummyTarget(tummyTarget);
-            setTempMassageTarget(massageTarget);
-            setIsTargetModalOpen(true);
-          }}
-          style={{
-            position: 'absolute',
-            top: '8px',
-            right: '8px',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'var(--text-muted)',
-            opacity: 0.4,
-            padding: '4px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: '50%',
-            transition: 'opacity 0.2s',
-          }}
-          className="icon-action-btn"
-          title="Edit Daily Goals"
-        >
-          <Settings size={12} />
-        </button>
-        <div className="metric-pill rose" style={pillStyle}>
+      <div className="card summary-card">
+        <div className="metric-pill rose" style={{ ...pillStyle, position: 'relative' }}>
           <Sparkles size={14} /> Massage
+          <button 
+            onClick={() => {
+              setTempMassageTarget(massageTarget);
+              setActiveTargetModal('massage');
+            }}
+            style={{
+              position: 'absolute',
+              right: '8px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'inherit',
+              opacity: 0.6,
+              padding: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '50%',
+              transition: 'opacity 0.2s',
+            }}
+            title="Edit Massage Goal"
+          >
+            <Settings size={12} />
+          </button>
         </div>
         <div style={{ fontSize: '15px', fontWeight: '700', marginBottom: '4px' }}>
           {(() => {
@@ -267,21 +265,20 @@ export default function SummaryCards() {
         <ChevronRight size={22} style={{ opacity: 0.35, marginRight: '4px', color: 'var(--text-main)' }} />
       </div>
 
-      {/* Daily Goals Selector Modal */}
-      {isTargetModalOpen && (
+      {/* Tummy Time Goal Selector Modal */}
+      {activeTargetModal === 'tummy' && (
         <div className="modal-overlay" style={{ zIndex: 3000 }}>
           <div className="modal-content" style={{ maxWidth: '340px' }}>
             <h2 style={{ marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              Daily Goals 🎯
+              Tummy Time Goal 🎯
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '0', marginBottom: '20px' }}>
-              Customize daily countdown targets for baby sessions.
+              Customize daily countdown target for tummy time.
             </p>
 
-            {/* Tummy Time Target */}
             <div style={{ marginBottom: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '14px', fontWeight: '600' }}>Tummy Time Goal</span>
+                <span style={{ fontSize: '14px', fontWeight: '600' }}>Daily Goal</span>
                 <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary)' }}>
                   {tempTummyTarget} min
                 </span>
@@ -298,10 +295,43 @@ export default function SummaryCards() {
               />
             </div>
 
-            {/* Massage Target */}
+            {/* Actions */}
+            <div className="grid-2" style={{ marginTop: '24px' }}>
+              <button 
+                className="button-primary" 
+                style={{ background: 'var(--border-soft)', color: 'var(--text-main)', border: 'none' }}
+                onClick={() => setActiveTargetModal(null)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="button-primary" 
+                onClick={() => {
+                  setTummyTarget(tempTummyTarget);
+                  setActiveTargetModal(null);
+                }}
+              >
+                Save Goal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Massage Goal Selector Modal */}
+      {activeTargetModal === 'massage' && (
+        <div className="modal-overlay" style={{ zIndex: 3000 }}>
+          <div className="modal-content" style={{ maxWidth: '340px' }}>
+            <h2 style={{ marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              Massage Goal 🎯
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '0', marginBottom: '20px' }}>
+              Customize daily countdown target for massage.
+            </p>
+
             <div style={{ marginBottom: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '14px', fontWeight: '600' }}>Massage Goal</span>
+                <span style={{ fontSize: '14px', fontWeight: '600' }}>Daily Goal</span>
                 <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary)' }}>
                   {tempMassageTarget} min
                 </span>
@@ -323,19 +353,18 @@ export default function SummaryCards() {
               <button 
                 className="button-primary" 
                 style={{ background: 'var(--border-soft)', color: 'var(--text-main)', border: 'none' }}
-                onClick={() => setIsTargetModalOpen(false)}
+                onClick={() => setActiveTargetModal(null)}
               >
                 Cancel
               </button>
               <button 
                 className="button-primary" 
                 onClick={() => {
-                  setTummyTarget(tempTummyTarget);
                   setMassageTarget(tempMassageTarget);
-                  setIsTargetModalOpen(false);
+                  setActiveTargetModal(null);
                 }}
               >
-                Save Goals
+                Save Goal
               </button>
             </div>
           </div>
