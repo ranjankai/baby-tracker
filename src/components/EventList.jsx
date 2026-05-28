@@ -435,11 +435,6 @@ export default function EventList() {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
 
-          {/* History icon */}
-          <div style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '8px', borderRadius: '12px', display: 'flex', flexShrink: 0 }}>
-            <History size={20} />
-          </div>
-
           {/* Recycle Bin icon — next to log icon */}
           <button onClick={() => setShowBin(true)} title="Recycle Bin"
             style={{ flexShrink: 0, background: 'var(--border-soft)', color: 'var(--text-muted)', border: 'none', borderRadius: '10px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>

@@ -392,9 +392,14 @@ export default function QuickLog() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           {!anyActive && (
-            <span style={{ fontWeight: '700', fontSize: '16px', lineHeight: 1, color: 'var(--text-main)' }}>
-              Quick Log
-            </span>
+            <>
+              <div style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '8px', borderRadius: '12px', display: 'flex', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+                <QuickLogIcon size={22} />
+              </div>
+              <span style={{ marginLeft: '10px', fontWeight: '700', fontSize: '16px', lineHeight: 1, color: 'var(--text-main)' }}>
+                Quick Log
+              </span>
+            </>
           )}
         </div>
         {anyActive && (
