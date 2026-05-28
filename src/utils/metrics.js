@@ -58,11 +58,37 @@ export function getMetrics(events, allTimeStats = null) {
   const lastPeeRaw = hoursAgoRaw(lastPeeEvent?.start_time);
   const lastPoopRaw = hoursAgoRaw(lastPoopEvent?.start_time);
 
+  // Last tummy time
+  const lastTummyTimeEvent = sorted.find(e => e.type === 'tummy_time');
+  const lastTummyTime = hoursAgoStr(lastTummyTimeEvent?.start_time);
+  const lastTummyTimeRaw = hoursAgoRaw(lastTummyTimeEvent?.start_time);
+
+  // Last massage
+  const lastMassageEvent = sorted.find(e => e.type === 'massage');
+  const lastMassage = hoursAgoStr(lastMassageEvent?.start_time);
+  const lastMassageRaw = hoursAgoRaw(lastMassageEvent?.start_time);
+
   // Since 11pm last night
   const todayEvents = sorted.filter(e => new Date(e.start_time) >= dayStart);
   const feedsToday = todayEvents.filter(e => isFeed(e.type)).length;
   const peesToday  = todayEvents.filter(e => e.type === 'diaper' && e.pee_amount && e.pee_amount !== 'none').length;
   const poopsToday = todayEvents.filter(e => e.type === 'diaper' && e.poop_amount && e.poop_amount !== 'none').length;
+
+  const tummyTimeEventsToday = todayEvents.filter(e => e.type === 'tummy_time' && e.end_time);
+  const tummyTimeTodaySeconds = tummyTimeEventsToday.reduce((acc, e) => {
+    const start = new Date(e.start_time).getTime();
+    const end = new Date(e.end_time).getTime();
+    const durationMs = Math.max(0, (end - start) - (e.total_paused_ms || 0));
+    return acc + Math.floor(durationMs / 1000);
+  }, 0);
+
+  const massageEventsToday = todayEvents.filter(e => e.type === 'massage' && e.end_time);
+  const massageTodaySeconds = massageEventsToday.reduce((acc, e) => {
+    const start = new Date(e.start_time).getTime();
+    const end = new Date(e.end_time).getTime();
+    const durationMs = Math.max(0, (end - start) - (e.total_paused_ms || 0));
+    return acc + Math.floor(durationMs / 1000);
+  }, 0);
 
   // Spit-ups in last 24h
   const cutoff24h = new Date(Date.now() - 24 * 3600000);
@@ -105,12 +131,13 @@ export function getMetrics(events, allTimeStats = null) {
   })();
 
   return {
-    lastFeed, lastPee, lastPoop,
-    lastFeedRaw, lastPeeRaw, lastPoopRaw,
-    feedsToday, peesToday, poopsToday, hoursElapsed,
+    lastFeed, lastPee, lastPoop, lastTummyTime, lastMassage,
+    lastFeedRaw, lastPeeRaw, lastPoopRaw, lastTummyTimeRaw, lastMassageRaw,
+    feedsToday, peesToday, poopsToday, tummyTimeTodaySeconds, massageTodaySeconds, hoursElapsed,
     totalDiapers, avgDiapersPerDay,
     spitUps24h, spitUpsMajor, spitUpsMinor,
     latestWeight,
     weightTrend
   };
 }
+

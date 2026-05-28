@@ -259,6 +259,8 @@ EVENT TYPE GUIDE:
 - type="spit_up": spit-up event. severity in notes.
 - type="medicine": dose given to baby. medicine name and dosage in the notes field.
 - type="weight": weight measurement.
+- type="tummy_time": tummy time session.
+- type="massage": baby massage session.
 ${contextBlock}
 PARENT'S REQUEST: "${text}"
 

@@ -17,6 +17,8 @@ export function BabyProvider({ children }) {
   const [dateFilter, setDateFilter] = useState(null);
 
   const [lastFeed, setLastFeed] = useState(null); // The TRUE last feed for smart suggestions
+  const [activeTummyTime, setActiveTummyTime] = useState(null);
+  const [activeMassage, setActiveMassage] = useState(null);
   const [metrics, setMetrics] = useState(null); // The TRUE metrics for summary cards
   const [allTimeStats, setAllTimeStats] = useState({ totalDiapers: 0, firstEventTime: null });
   const [aiInsights, setAiInsights] = useState(null);
@@ -107,6 +109,12 @@ export function BabyProvider({ children }) {
           setMetrics(getMetrics(recentEvents, stats));
           const feed = recentEvents.find(e => ['top', 'mom_l', 'mom_r'].includes(e.type));
           if (feed) setLastFeed(feed);
+
+          const activeTT = recentEvents.find(e => e.type === 'tummy_time' && !e.end_time);
+          setActiveTummyTime(activeTT || null);
+
+          const activeMsg = recentEvents.find(e => e.type === 'massage' && !e.end_time);
+          setActiveMassage(activeMsg || null);
         }
         if (weightRes.data) {
           setWeightLogs(weightRes.data);
@@ -180,6 +188,8 @@ export function BabyProvider({ children }) {
     // This lets QuickLog's useEffect([lastFeed]) fire instantly without waiting
     // for the DB round-trip + realtime + fetchGlobalState chain.
     setLastFeed(prev => prev?.id === id ? { ...prev, ...updates } : prev);
+    setActiveTummyTime(prev => prev?.id === id ? { ...prev, ...updates } : prev);
+    setActiveMassage(prev => prev?.id === id ? { ...prev, ...updates } : prev);
     const { data } = await supabase.from('baby_events').update(updates).eq('id', id).select();
     return !!data;
   };
@@ -245,7 +255,7 @@ export function BabyProvider({ children }) {
     <BabyContext.Provider value={{
       events, addEvent, updateEvent, deleteEvent, loading, allTimeStats, aiInsights,
       page, setPage, totalCount, PAGE_SIZE, filters, toggleFilter, dateFilter, setGotoDate,
-      lastFeed, metrics, restoreFromTrash, fetchDeletedEvents, fetchEventsForRange, weightLogs // Export range fetch
+      lastFeed, activeTummyTime, activeMassage, metrics, restoreFromTrash, fetchDeletedEvents, fetchEventsForRange, weightLogs // Export range fetch
     }}>
       {children}
     </BabyContext.Provider>

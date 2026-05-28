@@ -160,11 +160,24 @@ export default function EventList() {
   // Exporter state & logic
   const [showExporter, setShowExporter]     = useState(false);
   const [exportFormat, setExportFormat]     = useState('text'); // 'text' | 'markdown'
-  const [fromConfigDate, setFromConfigDate] = useState(getLocalDate());
-  const [toConfigDate, setToConfigDate]     = useState(getLocalDate());
   const [copied, setCopied]                 = useState(false);
   const [rangeEvents, setRangeEvents]       = useState([]);
   const [isRangeLoading, setIsRangeLoading] = useState(false);
+
+  const getExportRange = () => {
+    if (dateFilter) {
+      if (dateFilter.includes(':')) {
+        const [from, to] = dateFilter.split(':');
+        return { from, to };
+      } else {
+        return { from: dateFilter, to: dateFilter };
+      }
+    }
+    const localToday = getLocalDate();
+    return { from: localToday, to: localToday };
+  };
+
+  const { from: fromConfigDate, to: toConfigDate } = getExportRange();
 
   // Date Picker Range Modal state & logic
   const [showDatePickerModal, setShowDatePickerModal] = useState(false);
@@ -213,9 +226,30 @@ export default function EventList() {
     }
   }, [showExporter, fromConfigDate, toConfigDate, fetchEventsForRange]); // eslint-disable-line
 
+  const getFilteredRangeEvents = (eventsList, activeFilters) => {
+    if (!activeFilters || activeFilters.length === 0) return eventsList;
+    
+    return eventsList.filter(e => {
+      return activeFilters.some(filter => {
+        if (filter === 'diaper_free') {
+          return e.type === 'diaper' && e.is_diaper_free === true;
+        }
+        if (filter === 'pee') {
+          return e.type === 'diaper' && ['light', 'heavy'].includes(e.pee_amount);
+        }
+        if (filter === 'poop') {
+          return e.type === 'diaper' && ['light', 'heavy'].includes(e.poop_amount);
+        }
+        return e.type === filter;
+      });
+    });
+  };
+
+  const filteredRangeEvents = getFilteredRangeEvents(rangeEvents, filters);
+
   const reportText = exportFormat === 'text'
-    ? formatLogsToPlainText(rangeEvents, fromConfigDate, toConfigDate)
-    : formatLogsToMarkdown(rangeEvents, fromConfigDate, toConfigDate);
+    ? formatLogsToPlainText(filteredRangeEvents, fromConfigDate, toConfigDate)
+    : formatLogsToMarkdown(filteredRangeEvents, fromConfigDate, toConfigDate);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(reportText);
@@ -256,6 +290,8 @@ export default function EventList() {
     if (type === 'spit_up') return <SpitUp size={16} />;
     if (type === 'medicine') return <Pill size={16} />;
     if (type === 'weight') return <Scale size={16} />;
+    if (type === 'tummy_time') return <TummyTime size={16} />;
+    if (type === 'massage') return <Sparkles size={16} />;
     return null;
   };
 
@@ -280,6 +316,8 @@ export default function EventList() {
       const isFirst = weightLogs.length > 0 && weightLogs[0].id === event.id;
       return `Weight${isFirst ? ' (Birth)' : ''} | ${event.weight_kg} kg`;
     }
+    if (event.type === 'tummy_time') return 'Tummy Time';
+    if (event.type === 'massage') return 'Massage';
     return '';
   };
 
@@ -297,9 +335,9 @@ export default function EventList() {
     const timeColor = isPM ? '#4f46e5' : '#eab308';
     
     const timeElement = <span style={{ color: timeColor, fontWeight: 700 }}>{hours}:{minutes}</span>;
-
+ 
     let feedDuration = null;
-    if (isFeed(event.type)) {
+    if (isFeed(event.type) || event.type === 'tummy_time' || event.type === 'massage') {
       if (!event.end_time) {
         feedDuration = <span style={{ color: 'var(--text-muted)' }}>| ⏱ Active</span>;
       } else {
@@ -342,6 +380,8 @@ export default function EventList() {
     if (type === 'spit_up')                   return { background: '#fef3c7',               color: '#b45309' };
     if (type === 'medicine')                  return { background: '#e0e7ff',               color: '#4338ca' };
     if (type === 'weight')                    return { background: '#e0e7ff',               color: '#4338ca' }; // Indigo style for weight
+    if (type === 'tummy_time')                return { background: 'var(--secondary-light)', color: 'var(--secondary)' };
+    if (type === 'massage')                   return { background: '#ffe1ea',               color: 'var(--accent)' };
     return { background: 'var(--primary-light)', color: 'var(--primary)' };
   };
 
@@ -800,17 +840,15 @@ export default function EventList() {
               <button className="icon-action-btn" onClick={() => setShowExporter(false)}><X size={22} /></button>
             </div>
 
-            {/* Dynamic Custom Range Calendar */}
-            <CustomCalendar 
-              fromDate={fromConfigDate}
-              toDate={toConfigDate}
-              onChangeRange={(from, to) => {
-                setFromConfigDate(from);
-                setToConfigDate(to);
-              }}
-              firstDate={firstDate}
-              today={today}
-            />
+            {/* Active Date Range Subtitle */}
+            <p style={{ margin: '-10px 0 16px', fontSize: '13px', color: 'var(--text-muted)', fontWeight: 500 }}>
+              Exporting logs for: <strong style={{ color: 'var(--primary)' }}>{fromConfigDate === toConfigDate ? formatDateDMY(fromConfigDate) : `${formatDateDMY(fromConfigDate)} to ${formatDateDMY(toConfigDate)}`}</strong>
+              {filters.length > 0 && (
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
+                  Active filters: <strong style={{ color: 'var(--secondary)' }}>{filters.map(f => f === 'mom_l' ? 'Mom (L)' : f === 'mom_r' ? 'Mom (R)' : f === 'top' ? 'Top' : f === 'diaper_free' ? 'Diaper Free' : f.charAt(0).toUpperCase() + f.slice(1)).join(', ')}</strong>
+                </span>
+              )}
+            </p>
 
             {/* Tab format selector */}
             <div className="tab-switcher">

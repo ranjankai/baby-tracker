@@ -1,7 +1,7 @@
 import { useBaby } from './BabyContext';
 import { getMetrics } from '../utils/metrics';
-import { MousePointer2, Droplets, Utensils, Hash, Wind, ChevronRight } from 'lucide-react';
-import { SpitUp } from './Icons';
+import { MousePointer2, Droplets, Utensils, Hash, Wind, ChevronRight, Sparkles } from 'lucide-react';
+import { SpitUp, TummyTime } from './Icons';
 
 export default function SummaryCards() {
   const { allTimeStats, aiInsights, metrics } = useBaby();
@@ -90,6 +90,56 @@ export default function SummaryCards() {
         {aiInsights?.micro?.poop && (
           <div style={{ fontSize: '10px', color: 'var(--primary)', marginTop: '6px', opacity: 0.8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
             <MousePointer2 size={10} /> {aiInsights.micro.poop}
+          </div>
+        )}
+      </div>
+
+      {/* Tummy Time */}
+      <div className="card summary-card">
+        <div className="metric-pill mint" style={pillStyle}>
+          <TummyTime size={14} /> Tummy
+        </div>
+        <div style={{ fontSize: '15px', fontWeight: '700', marginBottom: '4px' }}>
+          {(() => {
+            const todaySecs = m.tummyTimeTodaySeconds || 0;
+            const remaining = Math.max(0, 900 - todaySecs);
+            if (remaining === 0) return 'Done 🎉';
+            const mins = Math.floor(remaining / 60);
+            const secs = remaining % 60;
+            return secs > 0 ? `${mins}m ${secs}s left` : `${mins}m left`;
+          })()}
+        </div>
+        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500' }}>
+          Last: {m.lastTummyTime || '—'}
+        </div>
+        {aiInsights?.micro?.tummy_time && (
+          <div style={{ fontSize: '10px', color: 'var(--primary)', marginTop: '6px', opacity: 0.8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+            <MousePointer2 size={10} /> {aiInsights.micro.tummy_time}
+          </div>
+        )}
+      </div>
+
+      {/* Massage */}
+      <div className="card summary-card">
+        <div className="metric-pill rose" style={pillStyle}>
+          <Sparkles size={14} /> Massage
+        </div>
+        <div style={{ fontSize: '15px', fontWeight: '700', marginBottom: '4px' }}>
+          {(() => {
+            const todaySecs = m.massageTodaySeconds || 0;
+            const remaining = Math.max(0, 900 - todaySecs);
+            if (remaining === 0) return 'Done 🎉';
+            const mins = Math.floor(remaining / 60);
+            const secs = remaining % 60;
+            return secs > 0 ? `${mins}m ${secs}s left` : `${mins}m left`;
+          })()}
+        </div>
+        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500' }}>
+          Last: {m.lastMassage || '—'}
+        </div>
+        {aiInsights?.micro?.massage && (
+          <div style={{ fontSize: '10px', color: 'var(--primary)', marginTop: '6px', opacity: 0.8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+            <MousePointer2 size={10} /> {aiInsights.micro.massage}
           </div>
         )}
       </div>

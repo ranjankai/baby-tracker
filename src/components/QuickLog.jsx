@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Milk, Timer, X, MessageCircle, Square, Play, Pause } from 'lucide-react';
+import { Milk, Timer, X, MessageCircle, Square, Play, Pause, Sparkles } from 'lucide-react';
 import { Diaper, TummyTime, SpitUp, TopFeed, Breastfeed, QuickLogIcon } from './Icons';
 import { useBaby } from './BabyContext';
 
@@ -41,10 +41,9 @@ function InlineComment({ value, onChange }) {
 
 // ────────────────────────────────────────────────────────────────────────────
 export default function QuickLog() {
-  const { addEvent, updateEvent, events, lastFeed } = useBaby();
+  const { addEvent, updateEvent, events, lastFeed, activeTummyTime, activeMassage, metrics } = useBaby();
 
-  // ── Active feed: the latest feed event without an end_time. That's it. ────
-  // One event at a time is enforced by UI, so this is always the one session.
+  // ── Active feed/timed session: the latest session event without an end_time. ────
   const [activeFeed, setActiveFeed] = useState(null);
   const [timer, setTimer]           = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(null);
@@ -78,31 +77,46 @@ export default function QuickLog() {
     return now.toISOString().slice(0, 16);
   };
 
-
   const FEED_TYPES = ['top', 'mom_l', 'mom_r'];
   const isFeed = (type) => FEED_TYPES.includes(type);
 
-  // ── Derive active feed from DB events ────────────────────────────────────
-  // Rule: look at the single latest event (events[0], sorted DESC).
-  // If it's a feed with no end_time → active. Anything else → nothing running.
-  // ── Derive active feed and suggested side ──────────────────────────────
+  // ── Derive active feed / session and suggested side ──────────────────────────────
   const [suggestedSide, setSuggestedSide] = useState(null);
 
   useEffect(() => {
-    // 1. Detect if a feed is currently running (no end_time)
-    // We check lastFeed because it's the most recent feed activity
+    // 1. Detect if a feed, tummy time, or massage is currently running (no end_time)
     if (lastFeed && isFeed(lastFeed.type) && !lastFeed.end_time) {
-      setActiveFeed(lastFeed);
+      setActiveFeed({ ...lastFeed, isCountdown: false });
+    } else if (activeTummyTime) {
+      const remainingQuota = Math.max(0, 900 - (metrics?.tummyTimeTodaySeconds || 0));
+      setActiveFeed({ ...activeTummyTime, isCountdown: true, maxDuration: remainingQuota });
+    } else if (activeMassage) {
+      const remainingQuota = Math.max(0, 900 - (metrics?.massageTodaySeconds || 0));
+      setActiveFeed({ ...activeMassage, isCountdown: true, maxDuration: remainingQuota });
     } else {
       setActiveFeed(null);
     }
 
     // 2. Suggest opposite side based on the latest Mom feed
-    // If the last feed was a Mom feed, suggest the opposite
     if (lastFeed && (lastFeed.type === 'mom_l' || lastFeed.type === 'mom_r')) {
       setSuggestedSide(lastFeed.type === 'mom_l' ? 'mom_r' : 'mom_l');
     }
-  }, [lastFeed]);
+  }, [lastFeed, activeTummyTime, activeMassage, metrics]);
+
+  // ── Automatic Stop for Countdowns ──────────────────────────────────────────
+  const handleAutoStop = async (session) => {
+    let totalPaused = session.total_paused_ms || 0;
+    // Set end_time to exactly maxDuration + totalPaused after start_time
+    const startMs = new Date(session.start_time).getTime();
+    const endTime = new Date(startMs + (session.maxDuration || 900) * 1000 + totalPaused).toISOString();
+
+    await updateEvent(session.id, { 
+      end_time: endTime,
+      is_paused: false,
+      paused_at: null,
+      total_paused_ms: totalPaused
+    });
+  };
 
   // ── Live timer ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -112,13 +126,22 @@ export default function QuickLog() {
     const totalPaused = activeFeed.total_paused_ms || 0;
 
     const calculateTime = () => {
+      let elapsedSeconds = 0;
       if (activeFeed.is_paused) {
         // If paused, freeze timer at (paused_at - start - total_paused)
         const pauseTime = new Date(activeFeed.paused_at).getTime();
-        return Math.floor(((pauseTime - start) - totalPaused) / 1000);
+        elapsedSeconds = Math.floor(((pauseTime - start) - totalPaused) / 1000);
       } else {
         // If running, timer is (now - start - total_paused)
-        return Math.floor(((Date.now() - start) - totalPaused) / 1000);
+        elapsedSeconds = Math.floor(((Date.now() - start) - totalPaused) / 1000);
+      }
+
+      if (activeFeed.isCountdown) {
+        // Reverse timer from 15:00
+        const remaining = (activeFeed.maxDuration || 900) - elapsedSeconds;
+        return Math.max(0, remaining);
+      } else {
+        return elapsedSeconds;
       }
     };
 
@@ -126,7 +149,16 @@ export default function QuickLog() {
 
     if (activeFeed.is_paused) return; // Don't run interval if paused
 
-    const interval = setInterval(() => setTimer(calculateTime()), 1000);
+    const interval = setInterval(() => {
+      const t = calculateTime();
+      setTimer(t);
+
+      // Auto-stop if countdown reaches 0:00
+      if (activeFeed.isCountdown && t <= 0) {
+        clearInterval(interval);
+        handleAutoStop(activeFeed);
+      }
+    }, 1000);
     return () => clearInterval(interval);
   }, [activeFeed]);
 
@@ -227,15 +259,48 @@ export default function QuickLog() {
     setShowBottleStopModal(true);
   };
 
+  const handleStartTummyTime = async () => {
+    setIsSubmitting('tummy_time');
+    const timeout = setTimeout(() => setIsSubmitting(null), 5000); // 5s safety hatch
+    try {
+      await addEvent({ type: 'tummy_time' });
+    } catch (error) {
+      if (error?.code === '23505') {
+        window.location.reload();
+      } else {
+        setIsSubmitting(null);
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  const handleStartMassage = async () => {
+    setIsSubmitting('massage');
+    const timeout = setTimeout(() => setIsSubmitting(null), 5000); // 5s safety hatch
+    try {
+      await addEvent({ type: 'massage' });
+    } catch (error) {
+      if (error?.code === '23505') {
+        window.location.reload();
+      } else {
+        setIsSubmitting(null);
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
   const handleStopActiveFeed = () => {
     if (isStopping) return;          // guard: ignore second tap
     setIsStopping(true);             // disable immediately, don't wait for DB
     if (activeFeed?.type === 'top') handleStopBottle();
-    else handleStopMomFeed();
+    else handleStopMomFeed();        // tummy_time and massage use exact same logic
   };
 
 
   const handleConfirmBottleStop = () => {
+
     if (!bottleStopId) return;
 
     // We need to re-find the activeFeed to get the latest pause data for the final DB write
@@ -326,17 +391,14 @@ export default function QuickLog() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <div style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '8px', borderRadius: '12px', display: 'flex', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-            <QuickLogIcon size={22} />
-          </div>
           {!anyActive && (
-            <span style={{ marginLeft: '10px', fontWeight: '700', fontSize: '16px', lineHeight: 1, color: 'var(--text-main)' }}>
+            <span style={{ fontWeight: '700', fontSize: '16px', lineHeight: 1, color: 'var(--text-main)' }}>
               Quick Log
             </span>
           )}
         </div>
         {anyActive && (
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: 1, marginLeft: '12px', minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: 1, minWidth: 0 }}>
             <button className="button-primary" onClick={handleStopActiveFeed}
               title="Stop"
               disabled={isStopping}
@@ -350,17 +412,21 @@ export default function QuickLog() {
               style={{ background: activeFeed.is_paused ? 'var(--secondary)' : '#f3f0ff', color: activeFeed.is_paused ? 'white' : 'var(--primary)', padding: '0', flex: 1, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '14px', border: 'none', cursor: isPausing ? 'not-allowed' : 'pointer', opacity: isPausing ? 0.5 : 1, transition: 'opacity 0.15s', touchAction: 'manipulation' }}>
               {activeFeed.is_paused ? <Play size={20} fill="currentColor" /> : <Pause size={20} fill="currentColor" />}
             </button>
-            <div className={`metric-pill ${activeFeed.is_paused ? 'amber' : 'lavender'}`} style={{ fontWeight: '700', gap: '6px', height: '48px', padding: '0 16px', borderRadius: '14px', flexShrink: 0, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}>
-              {activeFeed.is_paused ? <Milk size={16} style={{ flexShrink: 0 }} /> : <Timer size={16} style={{ flexShrink: 0 }} />} 
+            <div className={`metric-pill ${
+              activeFeed.is_paused ? 'amber' : 
+              activeFeed.type === 'tummy_time' ? 'mint' : 
+              activeFeed.type === 'massage' ? 'rose' : 
+              'lavender'
+            }`} style={{ fontWeight: '700', height: '48px', padding: '0 18px', borderRadius: '14px', flexShrink: 0, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {formatTimer(timer)}
             </div>
           </div>
         )}
       </div>
 
-      <div className="grid-3">
+      <div className="grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px' }}>
 
-        {/* Row 1: Feeding */}
+        {/* Row 1: Feeding & Spit-up */}
         <button className={`button-primary ${suggestedSide === 'mom_l' ? 'suggested-side' : ''}`} 
           onClick={() => handleStartMomFeed('left')}
           disabled={anyActive || isSubmitting !== null}
@@ -368,9 +434,12 @@ export default function QuickLog() {
             background: 'var(--primary-light)', 
             color: 'var(--primary)', 
             opacity: (anyActive || isSubmitting) ? 0.45 : 1,
-            border: suggestedSide === 'mom_l' ? '2px solid var(--primary)' : 'none'
+            border: suggestedSide === 'mom_l' ? '2px solid var(--primary)' : 'none',
+            padding: '10px 4px',
+            fontSize: '13px',
+            borderRadius: '12px'
           }}>
-          <Breastfeed size={20} /> {isSubmitting === 'left' ? 'Starting...' : 'Left'}
+          <Breastfeed size={16} /> Left
         </button>
 
         <button className={`button-primary ${suggestedSide === 'mom_r' ? 'suggested-side' : ''}`} 
@@ -380,31 +449,85 @@ export default function QuickLog() {
             background: 'var(--primary-light)', 
             color: 'var(--primary)', 
             opacity: (anyActive || isSubmitting) ? 0.45 : 1,
-            border: suggestedSide === 'mom_r' ? '2px solid var(--primary)' : 'none'
+            border: suggestedSide === 'mom_r' ? '2px solid var(--primary)' : 'none',
+            padding: '10px 4px',
+            fontSize: '13px',
+            borderRadius: '12px'
           }}>
-          <Breastfeed size={20} flip /> {isSubmitting === 'right' ? 'Starting...' : 'Right'}
+          <Breastfeed size={16} flip /> Right
         </button>
 
         <button className="button-primary" onClick={handleStartBottle}
           disabled={anyActive || isSubmitting !== null}
-          style={{ background: 'var(--primary)', color: 'white', opacity: (anyActive || isSubmitting) ? 0.45 : 1 }}>
-          <TopFeed size={20} /> {isSubmitting === 'top' ? 'Starting...' : 'Top'}
-        </button>
-
-        {/* Row 2: Outputs */}
-        <button className="button-primary" onClick={() => openDiaperModal(false)}
-          style={{ background: 'var(--secondary-light)', color: 'var(--secondary)' }}>
-          <Diaper size={20} /> Diaper
-        </button>
-
-        <button className="button-primary" onClick={() => openDiaperModal(true)}
-          style={{ background: 'var(--secondary-light)', color: 'var(--secondary)' }}>
-          <TummyTime size={20} /> Free
+          style={{ 
+            background: 'var(--primary)', 
+            color: 'white', 
+            opacity: (anyActive || isSubmitting) ? 0.45 : 1,
+            padding: '10px 4px',
+            fontSize: '13px',
+            borderRadius: '12px'
+          }}>
+          <TopFeed size={16} /> Top
         </button>
 
         <button className="button-primary" onClick={openSpitUpModal}
-          style={{ background: '#fef3c7', color: '#b45309' }}>
-          <SpitUp size={20} /> Spit-up
+          style={{ 
+            background: '#fef3c7', 
+            color: '#b45309',
+            padding: '10px 4px',
+            fontSize: '13px',
+            borderRadius: '12px'
+          }}>
+          <SpitUp size={16} /> Spit-up
+        </button>
+
+        {/* Row 2: Outputs & Timed activities */}
+        <button className="button-primary" onClick={() => openDiaperModal(false)}
+          style={{ 
+            background: 'var(--secondary-light)', 
+            color: 'var(--secondary)',
+            padding: '10px 4px',
+            fontSize: '13px',
+            borderRadius: '12px'
+          }}>
+          <Diaper size={16} /> Diaper
+        </button>
+
+        <button className="button-primary" onClick={() => openDiaperModal(true)}
+          style={{ 
+            background: 'var(--secondary-light)', 
+            color: 'var(--secondary)',
+            padding: '10px 4px',
+            fontSize: '13px',
+            borderRadius: '12px'
+          }}>
+          <TummyTime size={16} /> Free
+        </button>
+
+        <button className="button-primary" onClick={handleStartTummyTime}
+          disabled={anyActive || isSubmitting !== null}
+          style={{ 
+            background: 'var(--secondary-light)', 
+            color: 'var(--secondary)', 
+            opacity: (anyActive || isSubmitting) ? 0.45 : 1,
+            padding: '10px 4px',
+            fontSize: '13px',
+            borderRadius: '12px'
+          }}>
+          <TummyTime size={16} /> Tummy
+        </button>
+
+        <button className="button-primary" onClick={handleStartMassage}
+          disabled={anyActive || isSubmitting !== null}
+          style={{ 
+            background: '#ffe1ea', 
+            color: 'var(--accent)', 
+            opacity: (anyActive || isSubmitting) ? 0.45 : 1,
+            padding: '10px 4px',
+            fontSize: '13px',
+            borderRadius: '12px'
+          }}>
+          <Sparkles size={16} /> Massage
         </button>
 
       </div>
