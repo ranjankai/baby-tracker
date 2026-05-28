@@ -91,11 +91,11 @@ async function callGemini(prompt: string): Promise<string> {
 // ── Baby context ──────────────────────────────────────────────────────────────
 async function getBabyAge(): Promise<string> {
   const { data } = await supabase
-    .from("baby_events").select("start_time")
-    .not("notes", "like", "SYSTEM_MSG%")
-    .order("start_time", { ascending: true }).limit(1);
-  if (!data?.[0]) return "<3 month old";
-  const days  = Math.floor((Date.now() - new Date(data[0].start_time).getTime()) / 86400000);
+    .from("baby_events").select("start_time, notes")
+    .order("start_time", { ascending: true }).limit(50);
+  const firstEvent = (data || []).find(e => !e.notes?.startsWith("SYSTEM_MSG:"));
+  if (!firstEvent) return "<3 month old";
+  const days  = Math.floor((Date.now() - new Date(firstEvent.start_time).getTime()) / 86400000);
   const weeks = Math.floor(days / 7);
   return weeks > 0 ? `${weeks} week old (approx ${days} days)` : `${days} day old`;
 }
@@ -146,9 +146,8 @@ async function fetchEvents(): Promise<any[]> {
   const { data } = await supabase
     .from("baby_events").select("*")
     .gte("start_time", from)
-    .not("notes", "like", "SYSTEM_MSG%")
     .order("start_time", { ascending: true });
-  return data || [];
+  return (data || []).filter(e => !e.notes?.startsWith("SYSTEM_MSG:"));
 }
 
 // ── Help message ──────────────────────────────────────────────────────────────
