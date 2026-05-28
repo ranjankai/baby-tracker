@@ -1,13 +1,25 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import fs from 'fs';
 
-const GLOBAL_GEMINI_API_KEY = 'AIzaSyB5asr0YHNInJTmoWuLodHqhkJIU9VlUbw';
+// Support loading local .env file manually in Node
+if (fs.existsSync('.env')) {
+  const env = fs.readFileSync('.env', 'utf-8');
+  env.split('\n').forEach(line => {
+    const [key, value] = line.split('=');
+    if (key && value) {
+      process.env[key.trim()] = value.trim();
+    }
+  });
+}
+
+const GLOBAL_GEMINI_API_KEY = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(GLOBAL_GEMINI_API_KEY);
 
-const supabase = createClient(
-  'https://vyaleoetmmxjsykirfop.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ5YWxlb2V0bW14anN5a2lyZm9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNTY1MzYsImV4cCI6MjA5MTczMjUzNn0.Qp4nEKv1TW638Yfw_Gx7WfdhVzU_ARsfX0J-ONvX51U'
-);
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://vyaleoetmmxjsykirfop.supabase.co';
+const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ5YWxlb2V0bW14anN5a2lyZm9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNTY1MzYsImV4cCI6MjA5MTczMjUzNn0.Qp4nEKv1TW638Yfw_Gx7WfdhVzU_ARsfX0J-ONvX51U';
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function callDualTierAI(prompt, tier = 'protocol', responseMimeType = 'text/plain') {
   const chains = {
