@@ -146,8 +146,88 @@ async function fetchEvents(): Promise<any[]> {
   const { data } = await supabase
     .from("baby_events").select("*")
     .gte("start_time", from)
-    .order("start_time", { ascending: true });
-  return (data || []).filter(e => !e.notes?.startsWith("SYSTEM_MSG:"));
+    .order("start_time", { ascending: false });
+  return (data || []).reverse().filter(e => !e.notes?.startsWith("SYSTEM_MSG:"));
+}
+
+function formatEventsForAI(events: any[]): string {
+  const groups: Record<string, string[]> = {};
+  
+  for (const e of events) {
+    const d = new Date(e.start_time);
+    const dateStr = d.toLocaleDateString("en-IN", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: IST
+    });
+    const timeStr = d.toLocaleTimeString("en-IN", {
+      hour: "2-digit", minute: "2-digit", hour12: true, timeZone: IST
+    });
+    
+    let desc = "";
+    if (e.type === "diaper") {
+      const parts: string[] = [];
+      if (e.poop_amount && e.poop_amount !== "none") parts.push(`poop: ${e.poop_amount}`);
+      if (e.pee_amount && e.pee_amount !== "none") parts.push(`pee: ${e.pee_amount}`);
+      desc = `Diaper change (${parts.join(", ") || "dry"})`;
+    } else if (e.type === "mom_l" || e.type === "mom_r") {
+      desc = `Breastfeed (${e.type === "mom_l" ? "Left" : "Right"}) for ${e.duration_minutes || 0} mins`;
+    } else if (e.type === "top") {
+      desc = `Bottle feed (${e.amount_ml || 0} ml)`;
+    } else if (e.type === "spit_up") {
+      desc = `Spit-up`;
+    } else if (e.type === "medicine") {
+      desc = `Medicine: ${e.notes || ""}`;
+    } else if (e.type === "tummy_time") {
+      desc = `Tummy time`;
+    } else if (e.type === "massage") {
+      desc = `Massage`;
+    } else {
+      desc = `${e.type}`;
+    }
+    
+    if (e.notes && e.notes !== "null" && !e.notes.startsWith("SYSTEM_MSG:") && e.type !== "medicine") {
+      desc += ` | notes: "${e.notes}"`;
+    }
+    
+    if (!groups[dateStr]) groups[dateStr] = [];
+    groups[dateStr].push(`  • ${timeStr} — ${desc}`);
+  }
+  
+  return Object.entries(groups)
+    .map(([date, lines]) => `📅 ${date}\n${lines.join("\n")}`)
+    .join("\n\n");
+}
+
+function getDailyStats(events: any[]): string {
+  const stats: Record<string, { feeds: number; diapers: number; pees: number; poops: number; medicines: number }> = {};
+  
+  for (const e of events) {
+    const d = new Date(e.start_time);
+    const dateStr = d.toLocaleDateString("en-IN", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: IST
+    });
+    
+    if (!stats[dateStr]) {
+      stats[dateStr] = { feeds: 0, diapers: 0, pees: 0, poops: 0, medicines: 0 };
+    }
+    
+    const day = stats[dateStr];
+    if (e.type === "diaper") {
+      day.diapers++;
+      if (e.pee_amount && e.pee_amount !== "none") day.pees++;
+      if (e.poop_amount && e.poop_amount !== "none") day.poops++;
+    } else if (e.type === "mom_l" || e.type === "mom_r" || e.type === "top") {
+      day.feeds++;
+    } else if (e.type === "medicine") {
+      day.medicines++;
+    }
+  }
+  
+  return Object.entries(stats)
+    .map(([date, s]) => `📅 ${date}:
+  • Total Diapers: ${s.diapers} (Pees: ${s.pees}, Poops: ${s.poops})
+  • Total Feeds: ${s.feeds}
+  • Total Medicines: ${s.medicines}`)
+    .join("\n\n");
 }
 
 // ── Help message ──────────────────────────────────────────────────────────────
@@ -243,13 +323,14 @@ Deno.serve(async (req) => {
 - If they're asking a QUESTION: answer concisely in plain text, max 100 words. Start with a direct answer.
 In both cases: no markdown formatting, no asterisks, no **bold**.`;
 
+    const formattedLogs = formatEventsForAI(events);
+    const dailyStats = getDailyStats(events);
+
     const prompt = `You are a pediatric expert assistant for the parents of a ${ageContext} newborn girl in Gurgaon.
 CRITICAL: Factor the baby's exact age (${ageContext}) into all reasoning.
 
 CURRENT TIME (IST): ${currentLocalTime}
 ${envContext ? `CURRENT ENVIRONMENT: ${envContext}` : ""}
-
-TIMEZONE: All log timestamps are stored in UTC (ending in 'Z'). Convert to IST (+05:30) before showing any times. Never mention UTC to the parents.
 
 EVENT TYPE GUIDE:
 - type="diaper": diaper change. poop_amount field tells you if there was poop (any value other than "none" = poop occurred). pee_amount field tells you if there was pee.
@@ -263,7 +344,11 @@ EVENT TYPE GUIDE:
 ${contextBlock}
 PARENT'S REQUEST: "${text}"
 
-BABY LOGS (last 30 days, ${events.length} events): ${JSON.stringify(events)}
+DAILY STATISTICS SUMMARY (IST DETERMINISTIC COUNTS):
+${dailyStats}
+
+BABY LOGS (last 30 days in IST):
+${formattedLogs}
 
 ${formatRule}
 
