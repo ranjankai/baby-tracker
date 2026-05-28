@@ -167,7 +167,8 @@ function formatEventsForAI(events: any[]): string {
       const parts: string[] = [];
       if (e.poop_amount && e.poop_amount !== "none") parts.push(`poop: ${e.poop_amount}`);
       if (e.pee_amount && e.pee_amount !== "none") parts.push(`pee: ${e.pee_amount}`);
-      desc = `Diaper change (${parts.join(", ") || "dry"})`;
+      const label = e.is_diaper_free ? "Diaper Free session" : "Diaper change";
+      desc = `${label} (${parts.join(", ") || "dry"})`;
     } else if (e.type === "mom_l" || e.type === "mom_r") {
       desc = `Breastfeed (${e.type === "mom_l" ? "Left" : "Right"}) for ${e.duration_minutes || 0} mins`;
     } else if (e.type === "top") {
@@ -177,9 +178,29 @@ function formatEventsForAI(events: any[]): string {
     } else if (e.type === "medicine") {
       desc = `Medicine: ${e.notes || ""}`;
     } else if (e.type === "tummy_time") {
-      desc = `Tummy time`;
+      if (e.end_time) {
+        const start = new Date(e.start_time).getTime();
+        const end = new Date(e.end_time).getTime();
+        const durationMs = Math.max(0, (end - start) - (e.total_paused_ms || 0));
+        const durationMins = Math.floor(durationMs / 60000);
+        const durationSecs = Math.floor((durationMs % 60000) / 1000);
+        const durStr = durationMins > 0 ? `${durationMins}m ${durationSecs}s` : `${durationSecs}s`;
+        desc = `Tummy time (${durStr})`;
+      } else {
+        desc = `Tummy time (active/ongoing)`;
+      }
     } else if (e.type === "massage") {
-      desc = `Massage`;
+      if (e.end_time) {
+        const start = new Date(e.start_time).getTime();
+        const end = new Date(e.end_time).getTime();
+        const durationMs = Math.max(0, (end - start) - (e.total_paused_ms || 0));
+        const durationMins = Math.floor(durationMs / 60000);
+        const durationSecs = Math.floor((durationMs % 60000) / 1000);
+        const durStr = durationMins > 0 ? `${durationMins}m ${durationSecs}s` : `${durationSecs}s`;
+        desc = `Massage (${durStr})`;
+      } else {
+        desc = `Massage (active/ongoing)`;
+      }
     } else {
       desc = `${e.type}`;
     }
@@ -198,7 +219,7 @@ function formatEventsForAI(events: any[]): string {
 }
 
 function getDailyStats(events: any[]): string {
-  const stats: Record<string, { feeds: number; diapers: number; pees: number; poops: number; medicines: number }> = {};
+  const stats: Record<string, { feeds: number; diapers: number; pees: number; poops: number; diaperFree: number; medicines: number; tummyTimeSeconds: number; massageSeconds: number }> = {};
   
   for (const e of events) {
     const d = new Date(e.start_time);
@@ -207,26 +228,53 @@ function getDailyStats(events: any[]): string {
     });
     
     if (!stats[dateStr]) {
-      stats[dateStr] = { feeds: 0, diapers: 0, pees: 0, poops: 0, medicines: 0 };
+      stats[dateStr] = { feeds: 0, diapers: 0, pees: 0, poops: 0, diaperFree: 0, medicines: 0, tummyTimeSeconds: 0, massageSeconds: 0 };
     }
     
     const day = stats[dateStr];
     if (e.type === "diaper") {
-      day.diapers++;
+      if (e.is_diaper_free) {
+        day.diaperFree++;
+      } else {
+        day.diapers++;
+      }
       if (e.pee_amount && e.pee_amount !== "none") day.pees++;
       if (e.poop_amount && e.poop_amount !== "none") day.poops++;
     } else if (e.type === "mom_l" || e.type === "mom_r" || e.type === "top") {
       day.feeds++;
     } else if (e.type === "medicine") {
       day.medicines++;
+    } else if (e.type === "tummy_time" && e.end_time) {
+      const start = new Date(e.start_time).getTime();
+      const end = new Date(e.end_time).getTime();
+      const durationMs = Math.max(0, (end - start) - (e.total_paused_ms || 0));
+      day.tummyTimeSeconds += Math.floor(durationMs / 1000);
+    } else if (e.type === "massage" && e.end_time) {
+      const start = new Date(e.start_time).getTime();
+      const end = new Date(e.end_time).getTime();
+      const durationMs = Math.max(0, (end - start) - (e.total_paused_ms || 0));
+      day.massageSeconds += Math.floor(durationMs / 1000);
     }
   }
   
   return Object.entries(stats)
-    .map(([date, s]) => `📅 ${date}:
-  • Total Diapers: ${s.diapers} (Pees: ${s.pees}, Poops: ${s.poops})
-  • Total Feeds: ${s.feeds}
-  • Total Medicines: ${s.medicines}`)
+    .map(([date, s]) => {
+      const tummyMin = Math.floor(s.tummyTimeSeconds / 60);
+      const tummySec = s.tummyTimeSeconds % 60;
+      const massageMin = Math.floor(s.massageSeconds / 60);
+      const massageSec = s.massageSeconds % 60;
+      
+      const statsList = [
+        `• Total Diapers: ${s.diapers} (Pees: ${s.pees}, Poops: ${s.poops})`,
+        s.diaperFree > 0 ? `• Diaper Free Sessions: ${s.diaperFree}` : null,
+        `• Total Feeds: ${s.feeds}`,
+        s.medicines > 0 ? `• Total Medicines: ${s.medicines}` : null,
+        s.tummyTimeSeconds > 0 ? `• Total Tummy Time: ${tummyMin}m ${tummySec}s` : null,
+        s.massageSeconds > 0 ? `• Total Massage Time: ${massageMin}m ${massageSec}s` : null,
+      ].filter(Boolean);
+      
+      return `📅 ${date}:\n  ${statsList.join("\n  ")}`;
+    })
     .join("\n\n");
 }
 
@@ -333,14 +381,14 @@ CURRENT TIME (IST): ${currentLocalTime}
 ${envContext ? `CURRENT ENVIRONMENT: ${envContext}` : ""}
 
 EVENT TYPE GUIDE:
-- type="diaper": diaper change. poop_amount field tells you if there was poop (any value other than "none" = poop occurred). pee_amount field tells you if there was pee.
+- type="diaper": diaper change or diaper-free session. If is_diaper_free=true, it represents "Diaper Free" time. poop_amount tells you if there was poop (any value other than "none" = poop occurred). pee_amount tells you if there was pee.
 - type="mom_l" or "mom_r": breastfeed on left/right breast. duration_minutes in the record.
 - type="top": bottle/top-up feed.
 - type="spit_up": spit-up event. severity in notes.
 - type="medicine": dose given to baby. medicine name and dosage in the notes field.
 - type="weight": weight measurement.
-- type="tummy_time": tummy time session.
-- type="massage": baby massage session.
+- type="tummy_time": tummy time session. Shows duration calculated from start_time and end_time (minus total_paused_ms).
+- type="massage": baby massage session. Shows duration calculated from start_time and end_time (minus total_paused_ms).
 ${contextBlock}
 PARENT'S REQUEST: "${text}"
 
