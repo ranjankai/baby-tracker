@@ -401,7 +401,9 @@ ${formattedLogs}
 ${formatRule}
 
 RULES:
-- Use conversation history to resolve references ("that", "the last one", "she").
+- Use conversation history ONLY to resolve references ("that", "the last one", "she", "yesterday") and conversational flow.
+- ABSOLUTE SOURCE OF TRUTH: The [DAILY STATISTICS SUMMARY] and [BABY LOGS] are the ONLY source of truth for all facts, counts, times, and event details.
+- CONVERSATION HISTORY HALLUCINATION GUARDRAIL: NEVER extract, copy, or trust numbers, event counts, or logs from past assistant answers in the [Conversation history] block. If an event is not explicitly present in the [DAILY STATISTICS SUMMARY] or [BABY LOGS] for that day, it did NOT occur. If there is any contradiction, or if the logs are empty, the logs ALWAYS override the conversation history. You MUST report 0 or no data if the logs/stats show 0 or no data, regardless of what the conversation history claims.
 - Only show events relevant to the request — filter by type, date range, and sub-type (e.g. poop vs pee) as needed.
 - Factor environment only if directly relevant.`;
 
