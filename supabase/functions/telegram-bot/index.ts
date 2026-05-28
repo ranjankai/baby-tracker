@@ -387,8 +387,8 @@ EVENT TYPE GUIDE:
 - type="spit_up": spit-up event. severity in notes.
 - type="medicine": dose given to baby. medicine name and dosage in the notes field.
 - type="weight": weight measurement.
-- type="tummy_time": tummy time session. Shows duration calculated from start_time and end_time (minus total_paused_ms).
-- type="massage": baby massage session. Shows duration calculated from start_time and end_time (minus total_paused_ms).
+- type="tummy_time": tummy time session. Shows duration calculated from start_time and end_time (minus total_paused_ms). The daily target is customizable by the parents in their app (defaulting to 15 minutes). If they ask about goals or remaining quotas, use 15 minutes as a reference default and mention that they can customize it in their dashboard.
+- type="massage": baby massage session. Shows duration calculated from start_time and end_time (minus total_paused_ms). The daily target is customizable by the parents in their app (defaulting to 15 minutes). If they ask about goals or remaining quotas, use 15 minutes as a reference default and mention that they can customize it in their dashboard.
 ${contextBlock}
 PARENT'S REQUEST: "${text}"
 
