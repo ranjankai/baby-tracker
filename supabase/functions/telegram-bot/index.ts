@@ -7,6 +7,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TELEGRAM_TOKEN            = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
 const GEMINI_API_KEY            = Deno.env.get("GEMINI_API_KEY")!;
 const LOCATION                  = "M3M Golf Estate, Sector 65, Gurgaon, India";
+const DEFAULT_TARGET_MINUTES    = 15;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const genAI    = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -218,7 +219,7 @@ function formatEventsForAI(events: any[]): string {
     .join("\n\n");
 }
 
-function getDailyStats(events: any[]): string {
+function getDailyStats(events: any[], settings: { tummyTarget: number; massageTarget: number }): string {
   const stats: Record<string, { feeds: number; diapers: number; pees: number; poops: number; diaperFree: number; medicines: number; tummyTimeSeconds: number; massageSeconds: number }> = {};
   
   for (const e of events) {
@@ -269,13 +270,23 @@ function getDailyStats(events: any[]): string {
         s.diaperFree > 0 ? `• Diaper Free Sessions: ${s.diaperFree}` : null,
         `• Total Feeds: ${s.feeds}`,
         s.medicines > 0 ? `• Total Medicines: ${s.medicines}` : null,
-        s.tummyTimeSeconds > 0 ? `• Total Tummy Time: ${tummyMin}m ${tummySec}s` : null,
-        s.massageSeconds > 0 ? `• Total Massage Time: ${massageMin}m ${massageSec}s` : null,
+        s.tummyTimeSeconds > 0 ? `• Total Tummy Time: ${tummyMin}m ${tummySec}s (Target: ${settings.tummyTarget}m)` : null,
+        s.massageSeconds > 0 ? `• Total Massage Time: ${massageMin}m ${massageSec}s (Target: ${settings.massageTarget}m)` : null,
       ].filter(Boolean);
       
       return `📅 ${date}:\n  ${statsList.join("\n  ")}`;
     })
     .join("\n\n");
+}
+
+async function fetchSettings(): Promise<{ tummyTarget: number; massageTarget: number }> {
+  const { data } = await supabase.from("baby_settings").select("*");
+  const tummy = (data || []).find(s => s.key === "tummy_target");
+  const massage = (data || []).find(s => s.key === "massage_target");
+  return {
+    tummyTarget: tummy ? parseInt(tummy.value, 10) : DEFAULT_TARGET_MINUTES,
+    massageTarget: massage ? parseInt(massage.value, 10) : DEFAULT_TARGET_MINUTES,
+  };
 }
 
 // ── Help message ──────────────────────────────────────────────────────────────
@@ -347,11 +358,12 @@ Deno.serve(async (req) => {
   await sendMessage(chatId, "🔍 <i>Analysing logs…</i>");
 
   try {
-    const [ageContext, envContext, history, events] = await Promise.all([
+    const [ageContext, envContext, history, events, settings] = await Promise.all([
       getBabyAge(),
       getBabyAge().then(a => getEnvContext(a)),
       getContext(chatId),
       fetchEvents(),
+      fetchSettings(),
     ]);
 
     const currentLocalTime = new Date().toLocaleString("en-IN", {
@@ -372,7 +384,7 @@ Deno.serve(async (req) => {
 In both cases: no markdown formatting, no asterisks, no **bold**.`;
 
     const formattedLogs = formatEventsForAI(events);
-    const dailyStats = getDailyStats(events);
+    const dailyStats = getDailyStats(events, settings);
 
     const prompt = `You are a pediatric expert assistant for the parents of a ${ageContext} newborn girl in Gurgaon.
 CRITICAL: Factor the baby's exact age (${ageContext}) into all reasoning.
@@ -387,8 +399,8 @@ EVENT TYPE GUIDE:
 - type="spit_up": spit-up event. severity in notes.
 - type="medicine": dose given to baby. medicine name and dosage in the notes field.
 - type="weight": weight measurement.
-- type="tummy_time": tummy time session. Shows duration calculated from start_time and end_time (minus total_paused_ms). The daily target is customizable by the parents in their app (defaulting to 15 minutes). If they ask about goals or remaining quotas, use 15 minutes as a reference default and mention that they can customize it in their dashboard.
-- type="massage": baby massage session. Shows duration calculated from start_time and end_time (minus total_paused_ms). The daily target is customizable by the parents in their app (defaulting to 15 minutes). If they ask about goals or remaining quotas, use 15 minutes as a reference default and mention that they can customize it in their dashboard.
+- type="tummy_time": tummy time session. Shows duration calculated from start_time and end_time (minus total_paused_ms). The daily target is set by the parents to ${settings.tummyTarget} minutes.
+- type="massage": baby massage session. Shows duration calculated from start_time and end_time (minus total_paused_ms). The daily target is set by the parents to ${settings.massageTarget} minutes.
 ${contextBlock}
 PARENT'S REQUEST: "${text}"
 

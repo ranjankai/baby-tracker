@@ -8,6 +8,8 @@ const PAGE_SIZE = 50;
 const SYSTEM_PREFIXES = ['SYSTEM_', 'AI_SYSTEM_INSIGHT:', 'SYSTEM_MSG:'];
 const isSystemRow = (e) => SYSTEM_PREFIXES.some(p => e.notes?.startsWith(p));
 
+const DEFAULT_TARGET_MINUTES = 15;
+
 export function BabyProvider({ children }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,20 +29,26 @@ export function BabyProvider({ children }) {
   // Tummy and Massage customizable targets (in minutes, persisted)
   const [tummyTarget, setTummyTargetState] = useState(() => {
     const saved = localStorage.getItem('baby_tracker_tummy_target');
-    return saved ? parseInt(saved, 10) : 15;
+    return saved ? parseInt(saved, 10) : DEFAULT_TARGET_MINUTES;
   });
   const [massageTarget, setMassageTargetState] = useState(() => {
     const saved = localStorage.getItem('baby_tracker_massage_target');
-    return saved ? parseInt(saved, 10) : 15;
+    return saved ? parseInt(saved, 10) : DEFAULT_TARGET_MINUTES;
   });
 
-  const setTummyTarget = (mins) => {
+  const setTummyTarget = async (mins) => {
     setTummyTargetState(mins);
     localStorage.setItem('baby_tracker_tummy_target', mins);
+    if (supabase) {
+      await supabase.from('baby_settings').upsert({ key: 'tummy_target', value: JSON.stringify(mins) });
+    }
   };
-  const setMassageTarget = (mins) => {
+  const setMassageTarget = async (mins) => {
     setMassageTargetState(mins);
     localStorage.setItem('baby_tracker_massage_target', mins);
+    if (supabase) {
+      await supabase.from('baby_settings').upsert({ key: 'massage_target', value: JSON.stringify(mins) });
+    }
   };
 
   const stateRef = useRef({ page: 0, filters: [], dateFilter: null });
@@ -112,6 +120,23 @@ export function BabyProvider({ children }) {
           .order('start_time', { ascending: false })
           .limit(100);
 
+        // 2. Fetch baby_settings
+        const { data: settingsData } = await supabase
+          .from('baby_settings')
+          .select('*');
+        if (settingsData) {
+          const tummy = settingsData.find(s => s.key === 'tummy_target');
+          const massage = settingsData.find(s => s.key === 'massage_target');
+          if (tummy) {
+            setTummyTargetState(parseInt(tummy.value, 10));
+            localStorage.setItem('baby_tracker_tummy_target', tummy.value);
+          }
+          if (massage) {
+            setMassageTargetState(parseInt(massage.value, 10));
+            localStorage.setItem('baby_tracker_massage_target', massage.value);
+          }
+        }
+
         const [diaperRes, firstRes, weightRes] = await Promise.all([
           supabase.from('baby_events').select('*', { count: 'exact', head: true }).eq('type', 'diaper').eq('is_diaper_free', false),
           supabase.from('baby_events').select('start_time').order('start_time', { ascending: true }).limit(1),
@@ -161,7 +186,21 @@ export function BabyProvider({ children }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'baby_events' }, () => {
         fetchEvents(stateRef.current.page, stateRef.current.filters, stateRef.current.dateFilter);
         fetchGlobalState(); // Update lastFeed and stats on any change
-      }).subscribe();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'baby_settings' }, (payload) => {
+        const { new: newRow } = payload;
+        if (newRow) {
+          if (newRow.key === 'tummy_target') {
+            setTummyTargetState(parseInt(newRow.value, 10));
+            localStorage.setItem('baby_tracker_tummy_target', newRow.value);
+          }
+          if (newRow.key === 'massage_target') {
+            setMassageTargetState(parseInt(newRow.value, 10));
+            localStorage.setItem('baby_tracker_massage_target', newRow.value);
+          }
+        }
+      })
+      .subscribe();
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
