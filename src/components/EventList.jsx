@@ -422,6 +422,8 @@ export default function EventList() {
     { id: 'pee',        label: 'Pee'    },
     { id: 'poop',       label: 'Poop'   },
     { id: 'diaper_free',label: 'D Free' },
+    { id: 'tummy_time', label: 'Tummy'  },
+    { id: 'massage',    label: 'Massage'},
     { id: 'medicine',   label: 'Meds'   },
     { id: 'weight',     label: 'Weight' },
   ];
@@ -631,7 +633,7 @@ export default function EventList() {
               onChange={(e) => setEditingEvent({ ...editingEvent, start_time: new Date(e.target.value).toISOString() })}
             />
 
-            {isFeed(editingEvent.type) && (
+            {(isFeed(editingEvent.type) || editingEvent.type === 'tummy_time' || editingEvent.type === 'massage') && (
               <>
                 <span className="intensity-label">End Time</span>
                 <input type="datetime-local" className="input-field"

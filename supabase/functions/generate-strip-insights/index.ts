@@ -135,7 +135,9 @@ Deno.serve(async (req) => {
           "poop": "Short 4-5 word status",
           "spit_up": "Short 4-5 word status",
           "weight": "Short 4-5 word status on growth trend",
-          "stats": "Short 4-5 word status"
+          "stats": "Short 4-5 word status",
+          "tummy_time": "Short 4-5 word status on tummy time trend",
+          "massage": "Short 4-5 word status on massage trend"
         }
       }
       
