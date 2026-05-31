@@ -3,6 +3,112 @@ import { Milk, Timer, X, MessageCircle, Square, Play, Pause, Sparkles } from 'lu
 import { Diaper, TummyTime, SpitUp, TopFeed, Breastfeed, QuickLogIcon } from './Icons';
 import { useBaby } from './BabyContext';
 
+// ── Retro Flip Split-Flap Clock ──────────────────────────────────────────────
+function FlipTimer({ seconds }) {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  
+  const m1 = String(mins).padStart(2, '0')[0];
+  const m2 = String(mins).padStart(2, '0')[1];
+  const s1 = String(secs).padStart(2, '0')[0];
+  const s2 = String(secs).padStart(2, '0')[1];
+
+  return (
+    <div className="flip-clock-container">
+      <div className="flip-card">{m1}</div>
+      <div className="flip-card">{m2}</div>
+      <div className="flip-clock-divider">:</div>
+      <div className="flip-card">{s1}</div>
+      <div className="flip-card">{s2}</div>
+    </div>
+  );
+}
+
+// ── Reusable Concurrent Active Session Timer Card ──────────────────────────
+function ActiveSessionCard({ session, onPause, onResume, onStop, tummyTarget, massageTarget, metrics }) {
+  const [timer, setTimer] = useState(0);
+
+  const isCountdown = session.type === 'tummy_time'; // ONLY tummy_time is a countdown! Massage is count-up!
+
+  useEffect(() => {
+    const start = new Date(session.start_time).getTime();
+    const totalPaused = session.total_paused_ms || 0;
+
+    const calculateTime = () => {
+      let elapsedSeconds = 0;
+      if (session.is_paused) {
+        const pauseTime = new Date(session.paused_at).getTime();
+        elapsedSeconds = Math.floor(((pauseTime - start) - totalPaused) / 1000);
+      } else {
+        elapsedSeconds = Math.floor(((Date.now() - start) - totalPaused) / 1000);
+      }
+
+      if (isCountdown) {
+        // Tummy Time countdown from remaining target quota
+        const todaySecs = metrics?.tummyTimeTodaySeconds || 0;
+        const remainingQuota = Math.max(0, (tummyTarget * 60) - todaySecs);
+        const remaining = remainingQuota - elapsedSeconds;
+        return Math.max(0, remaining);
+      } else {
+        // Count up for Feeds and Massage
+        return elapsedSeconds;
+      }
+    };
+
+    setTimer(calculateTime());
+
+    if (session.is_paused) return;
+
+    const interval = setInterval(() => {
+      const t = calculateTime();
+      setTimer(t);
+
+      // Auto-stop Tummy Time countdown if it hits 0
+      if (isCountdown && t <= 0) {
+        clearInterval(interval);
+        onStop(session, true);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [session, tummyTarget, massageTarget, metrics]);
+
+  const label = 
+    session.type === 'tummy_time' ? 'Tummy Time' : 
+    session.type === 'massage' ? 'Massage' : 
+    session.type === 'mom_l' ? 'Breast (L)' :
+    session.type === 'mom_r' ? 'Breast (R)' :
+    session.type === 'top' ? 'Top Feed' : 'Active Session';
+
+  return (
+    <div className="card active-session-panel" style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '10px', border: '1px solid var(--border-soft)', background: 'rgba(0,0,0,0.015)', borderRadius: '16px', width: '100%', boxShadow: 'none', marginBottom: '8px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-main)' }}>
+          {label} {session.is_paused && <span style={{ color: 'var(--accent)', fontWeight: 800 }}>(Paused)</span>}
+        </span>
+        <FlipTimer seconds={timer} />
+      </div>
+      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+        <button 
+          className="button-primary" 
+          onClick={() => onStop(session, false)}
+          style={{ background: 'var(--accent)', color: 'white', padding: '0', height: '36px', borderRadius: '10px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', border: 'none', cursor: 'pointer', flex: 1 }}
+        >
+          <Square size={13} fill="currentColor" /> Stop
+        </button>
+        <button 
+          className="button-primary" 
+          onClick={() => session.is_paused ? onResume(session) : onPause(session)}
+          style={{ background: session.is_paused ? 'var(--secondary)' : '#f3f0ff', color: session.is_paused ? 'white' : 'var(--primary)', padding: '0', height: '36px', borderRadius: '10px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', border: 'none', cursor: 'pointer', flex: 1 }}
+        >
+          {session.is_paused ? <Play size={13} fill="currentColor" /> : <Pause size={13} fill="currentColor" />}
+          {session.is_paused ? 'Resume' : 'Pause'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Reusable inline comment toggler used inside every modal ──────────────────
 function InlineComment({ value, onChange }) {
   const [open, setOpen] = useState(false);
@@ -53,10 +159,10 @@ export default function QuickLog() {
     massageTarget
   } = useBaby();
 
-  // ── Active feed/timed session: the latest session event without an end_time. ────
-  const [activeFeed, setActiveFeed] = useState(null);
-  const [timer, setTimer]           = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(null);
+  const [bottleElapsed, setBottleElapsed] = useState(0);
+  const [isStopping,    setIsStopping]    = useState(false);
+  const [isPausing,     setIsPausing]     = useState(false);
 
   // ── Diaper / Diaper Free modal ─────────────────────────────────────────────
   const [showDiaperModal, setShowDiaperModal] = useState(false);
@@ -77,9 +183,15 @@ export default function QuickLog() {
   const [bottleStopId,  setBottleStopId]  = useState(null); // captured at Stop press
   const [bottleAmount,  setBottleAmount]  = useState('');
   const [bottleNote,    setBottleNote]    = useState('');
-  const [bottleElapsed, setBottleElapsed] = useState(0);
-  const [isStopping,    setIsStopping]    = useState(false); // prevents double-tap on stop
-  const [isPausing,     setIsPausing]     = useState(false); // prevents double-tap on pause/resume
+
+  // ── Derive suggested side ──────────────────────────────────────────────
+  const [suggestedSide, setSuggestedSide] = useState(null);
+
+  useEffect(() => {
+    if (lastFeed && (lastFeed.type === 'mom_l' || lastFeed.type === 'mom_r')) {
+      setSuggestedSide(lastFeed.type === 'mom_l' ? 'mom_r' : 'mom_l');
+    }
+  }, [lastFeed]);
 
   const getLocalDatetime = () => {
     const now = new Date();
@@ -90,94 +202,64 @@ export default function QuickLog() {
   const FEED_TYPES = ['top', 'mom_l', 'mom_r'];
   const isFeed = (type) => FEED_TYPES.includes(type);
 
-  // ── Derive active feed / session and suggested side ──────────────────────────────
-  const [suggestedSide, setSuggestedSide] = useState(null);
 
-  useEffect(() => {
-    // 1. Detect if a feed, tummy time, or massage is currently running (no end_time)
-    if (lastFeed && isFeed(lastFeed.type) && !lastFeed.end_time) {
-      setActiveFeed({ ...lastFeed, isCountdown: false });
-    } else if (activeTummyTime) {
-      const remainingQuota = Math.max(0, (tummyTarget * 60) - (metrics?.tummyTimeTodaySeconds || 0));
-      setActiveFeed({ ...activeTummyTime, isCountdown: true, maxDuration: remainingQuota });
-    } else if (activeMassage) {
-      const remainingQuota = Math.max(0, (massageTarget * 60) - (metrics?.massageTodaySeconds || 0));
-      setActiveFeed({ ...activeMassage, isCountdown: true, maxDuration: remainingQuota });
-    } else {
-      setActiveFeed(null);
+  const handlePauseSession = (session) => {
+    if (isPausing) return;
+    setIsPausing(true);
+    const pausedAt = new Date().toISOString();
+    updateEvent(session.id, { is_paused: true, paused_at: pausedAt }).then(() => setIsPausing(false));
+  };
+
+  const handleResumeSession = (session) => {
+    if (isPausing) return;
+    setIsPausing(true);
+    const pauseDuration = Date.now() - new Date(session.paused_at).getTime();
+    const newTotalPaused = (session.total_paused_ms || 0) + pauseDuration;
+    updateEvent(session.id, { is_paused: false, paused_at: null, total_paused_ms: newTotalPaused }).then(() => setIsPausing(false));
+  };
+
+  const handleStopSession = async (session, isAutoStop = false) => {
+    if (isStopping) return;
+    setIsStopping(true);
+
+    if (session.type === 'top') {
+      let finalTimer = 0;
+      const start = new Date(session.start_time).getTime();
+      const totalPaused = session.total_paused_ms || 0;
+      if (session.is_paused) {
+        finalTimer = Math.floor(((new Date(session.paused_at).getTime() - start) - totalPaused) / 1000);
+      } else {
+        finalTimer = Math.floor(((Date.now() - start) - totalPaused) / 1000);
+      }
+      setBottleStopId(session.id);
+      setBottleElapsed(finalTimer);
+      setBottleAmount('');
+      setBottleNote('');
+      setShowBottleStopModal(true);
+      setIsStopping(false);
+      return;
     }
 
-    // 2. Suggest opposite side based on the latest Mom feed
-    if (lastFeed && (lastFeed.type === 'mom_l' || lastFeed.type === 'mom_r')) {
-      setSuggestedSide(lastFeed.type === 'mom_l' ? 'mom_r' : 'mom_l');
-    }
-  }, [lastFeed, activeTummyTime, activeMassage, metrics]);
-
-  // ── Automatic Stop for Countdowns ──────────────────────────────────────────
-  const handleAutoStop = async (session) => {
     let totalPaused = session.total_paused_ms || 0;
-    // Set end_time to exactly maxDuration + totalPaused after start_time
-    const startMs = new Date(session.start_time).getTime();
-    const endTime = new Date(startMs + (session.maxDuration || (session.type === 'tummy_time' ? tummyTarget * 60 : massageTarget * 60)) * 1000 + totalPaused).toISOString();
+    let endTime = new Date().toISOString();
 
-    await updateEvent(session.id, { 
+    if (session.is_paused) {
+      endTime = session.paused_at;
+    }
+
+    if (isAutoStop) {
+      const startMs = new Date(session.start_time).getTime();
+      endTime = new Date(startMs + (tummyTarget * 60) * 1000 + totalPaused).toISOString();
+    }
+
+    await updateEvent(session.id, {
       end_time: endTime,
       is_paused: false,
       paused_at: null,
       total_paused_ms: totalPaused
     });
+    setIsStopping(false);
   };
-
-  // ── Live timer ────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!activeFeed) { setTimer(0); return; }
-    
-    const start = new Date(activeFeed.start_time).getTime();
-    const totalPaused = activeFeed.total_paused_ms || 0;
-
-    const calculateTime = () => {
-      let elapsedSeconds = 0;
-      if (activeFeed.is_paused) {
-        // If paused, freeze timer at (paused_at - start - total_paused)
-        const pauseTime = new Date(activeFeed.paused_at).getTime();
-        elapsedSeconds = Math.floor(((pauseTime - start) - totalPaused) / 1000);
-      } else {
-        // If running, timer is (now - start - total_paused)
-        elapsedSeconds = Math.floor(((Date.now() - start) - totalPaused) / 1000);
-      }
-
-      if (activeFeed.isCountdown) {
-        // Reverse timer from 15:00
-        const remaining = (activeFeed.maxDuration || (activeFeed.type === 'tummy_time' ? tummyTarget * 60 : massageTarget * 60)) - elapsedSeconds;
-        return Math.max(0, remaining);
-      } else {
-        return elapsedSeconds;
-      }
-    };
-
-    setTimer(calculateTime()); // initial set
-
-    if (activeFeed.is_paused) return; // Don't run interval if paused
-
-    const interval = setInterval(() => {
-      const t = calculateTime();
-      setTimer(t);
-
-      // Auto-stop if countdown reaches 0:00
-      if (activeFeed.isCountdown && t <= 0) {
-        clearInterval(interval);
-        handleAutoStop(activeFeed);
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [activeFeed]);
-
-  // Reset isPausing as soon as the DB confirms the pause/resume (is_paused flipped)
-  useEffect(() => { setIsPausing(false); }, [activeFeed?.is_paused]);
-
-  const formatTimer = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-
-  // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleStartMomFeed = async (side) => {
     setIsSubmitting(side);
@@ -186,52 +268,13 @@ export default function QuickLog() {
       await addEvent({ type: side === 'left' ? 'mom_l' : 'mom_r' });
     } catch (error) {
       if (error?.code === '23505') {
-        window.location.reload(); // Out of sync, fetch latest state
+        window.location.reload();
       } else {
         setIsSubmitting(null);
       }
     } finally {
       clearTimeout(timeout);
     }
-  };
-
-  const handlePauseFeed = () => {
-    if (!activeFeed || isPausing) return;
-    setIsPausing(true);
-    const pausedAt = new Date().toISOString();
-    // Optimistic: freeze timer and flip icon immediately, don't wait for DB
-    setActiveFeed(prev => ({ ...prev, is_paused: true, paused_at: pausedAt }));
-    updateEvent(activeFeed.id, { is_paused: true, paused_at: pausedAt });
-  };
-
-  const handleResumeFeed = () => {
-    if (!activeFeed || isPausing) return;
-    setIsPausing(true);
-    const pauseDuration = Date.now() - new Date(activeFeed.paused_at).getTime();
-    const newTotalPaused = (activeFeed.total_paused_ms || 0) + pauseDuration;
-    // Optimistic: unfreeze timer immediately, don't wait for DB
-    setActiveFeed(prev => ({ ...prev, is_paused: false, paused_at: null, total_paused_ms: newTotalPaused }));
-    updateEvent(activeFeed.id, { is_paused: false, paused_at: null, total_paused_ms: newTotalPaused });
-  };
-
-
-  const handleStopMomFeed = () => {
-    if (!activeFeed) return;
-    
-    let totalPaused = activeFeed.total_paused_ms || 0;
-    let endTime = new Date().toISOString();
-
-    if (activeFeed.is_paused) {
-      // If stopped while paused, the feed actually ended at the pause moment
-      endTime = activeFeed.paused_at;
-    }
-
-    updateEvent(activeFeed.id, { 
-      end_time: endTime,
-      is_paused: false,
-      paused_at: null,
-      total_paused_ms: totalPaused
-    });
   };
 
   const handleStartBottle = async () => {
@@ -241,32 +284,13 @@ export default function QuickLog() {
       await addEvent({ type: 'top' });
     } catch (error) {
       if (error?.code === '23505') {
-        window.location.reload(); // Out of sync, fetch latest state
+        window.location.reload();
       } else {
         setIsSubmitting(null);
       }
     } finally {
       clearTimeout(timeout);
     }
-  };
-
-  const handleStopBottle = () => {
-    if (!activeFeed) return;
-    
-    // Calculate final timer value, accounting for a current pause if applicable
-    let finalTimer = timer;
-    let totalPaused = activeFeed.total_paused_ms || 0;
-    if (activeFeed.is_paused) {
-      // Re-calculate timer for the modal display based on when it was paused
-      const start = new Date(activeFeed.start_time).getTime();
-      finalTimer = Math.floor(((new Date(activeFeed.paused_at).getTime() - start) - (activeFeed.total_paused_ms || 0)) / 1000);
-    }
-
-    setBottleStopId(activeFeed.id);
-    setBottleElapsed(finalTimer);
-    setBottleAmount('');
-    setBottleNote('');
-    setShowBottleStopModal(true);
   };
 
   const handleStartTummyTime = async () => {
@@ -299,13 +323,6 @@ export default function QuickLog() {
     } finally {
       clearTimeout(timeout);
     }
-  };
-
-  const handleStopActiveFeed = () => {
-    if (isStopping) return;          // guard: ignore second tap
-    setIsStopping(true);             // disable immediately, don't wait for DB
-    if (activeFeed?.type === 'top') handleStopBottle();
-    else handleStopMomFeed();        // tummy_time and massage use exact same logic
   };
 
 
@@ -382,13 +399,19 @@ export default function QuickLog() {
 
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  const isBottleActive = activeFeed?.type === 'top';
-  const anyActive      = !!activeFeed;
+  const activeFeedSession = lastFeed && isFeed(lastFeed.type) && !lastFeed.end_time;
+  const isBottleActive = activeFeedSession && lastFeed.type === 'top';
+
+  const activeSessions = [];
+  if (activeFeedSession) activeSessions.push(lastFeed);
+  if (activeTummyTime) activeSessions.push(activeTummyTime);
+  if (activeMassage) activeSessions.push(activeMassage);
+
+  const anyActive = activeSessions.length > 0;
 
   useEffect(() => {
     if (anyActive) {
       setIsSubmitting(null);
-      setIsPausing(false); // reset whenever activeFeed updates (pause/resume resolved)
     } else {
       setIsStopping(false);
       setIsPausing(false);
@@ -399,56 +422,44 @@ export default function QuickLog() {
   return (
     <div className="card">
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          {!anyActive && (
-            <>
-              <div style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '8px', borderRadius: '12px', display: 'flex', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                <QuickLogIcon size={22} />
-              </div>
-              <span style={{ marginLeft: '10px', fontWeight: '700', fontSize: '16px', lineHeight: 1, color: 'var(--text-main)' }}>
-                Quick Log
-              </span>
-            </>
-          )}
+      {/* Header / Brand Title */}
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
+        <div style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '8px', borderRadius: '12px', display: 'flex', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+          <QuickLogIcon size={22} />
         </div>
-        {anyActive && (
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: 1, minWidth: 0 }}>
-            <button className="button-primary" onClick={handleStopActiveFeed}
-              title="Stop"
-              disabled={isStopping}
-              style={{ background: 'var(--accent)', color: 'white', padding: '0', flex: 1, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '14px', border: 'none', cursor: isStopping ? 'not-allowed' : 'pointer', opacity: isStopping ? 0.5 : 1, transition: 'opacity 0.15s' }}>
-              <Square size={20} fill="currentColor" />
-            </button>
-            <button className="button-primary"
-              onPointerDown={e => { e.preventDefault(); if (!isPausing) (activeFeed.is_paused ? handleResumeFeed : handlePauseFeed)(); }}
-              title={activeFeed.is_paused ? 'Resume' : 'Pause'}
-              disabled={isPausing}
-              style={{ background: activeFeed.is_paused ? 'var(--secondary)' : '#f3f0ff', color: activeFeed.is_paused ? 'white' : 'var(--primary)', padding: '0', flex: 1, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '14px', border: 'none', cursor: isPausing ? 'not-allowed' : 'pointer', opacity: isPausing ? 0.5 : 1, transition: 'opacity 0.15s', touchAction: 'manipulation' }}>
-              {activeFeed.is_paused ? <Play size={20} fill="currentColor" /> : <Pause size={20} fill="currentColor" />}
-            </button>
-            <div className={`metric-pill ${
-              activeFeed.is_paused ? 'amber' : 
-              activeFeed.type === 'tummy_time' ? 'mint' : 
-              activeFeed.type === 'massage' ? 'rose' : 
-              'lavender'
-            }`} style={{ fontWeight: '700', height: '48px', padding: '0 18px', borderRadius: '14px', flexShrink: 0, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {formatTimer(timer)}
-            </div>
-          </div>
-        )}
+        <span style={{ marginLeft: '10px', fontWeight: '700', fontSize: '16px', lineHeight: 1, color: 'var(--text-main)' }}>
+          Quick Log
+        </span>
       </div>
+
+      {/* Concurrent Active Sessions Display Stack */}
+      {anyActive && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', width: '100%' }}>
+          {activeSessions.map(session => (
+            <ActiveSessionCard 
+              key={session.id}
+              session={session}
+              tummyTarget={tummyTarget}
+              massageTarget={massageTarget}
+              metrics={metrics}
+              onPause={handlePauseSession}
+              onResume={handleResumeSession}
+              onStop={handleStopSession}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px' }}>
 
         {/* Row 1: Feeding & Spit-up */}
         <button className={`button-primary ${suggestedSide === 'mom_l' ? 'suggested-side' : ''}`} 
           onClick={() => handleStartMomFeed('left')}
-          disabled={anyActive || isSubmitting !== null}
+          disabled={!!activeFeedSession || isSubmitting !== null}
           style={{ 
             background: 'var(--primary-light)', 
             color: 'var(--primary)', 
-            opacity: (anyActive || isSubmitting) ? 0.45 : 1,
+            opacity: (activeFeedSession || isSubmitting) ? 0.45 : 1,
             border: suggestedSide === 'mom_l' ? '2px solid var(--primary)' : 'none',
             padding: '10px 4px',
             fontSize: '13px',
@@ -459,11 +470,11 @@ export default function QuickLog() {
 
         <button className={`button-primary ${suggestedSide === 'mom_r' ? 'suggested-side' : ''}`} 
           onClick={() => handleStartMomFeed('right')}
-          disabled={anyActive || isSubmitting !== null}
+          disabled={!!activeFeedSession || isSubmitting !== null}
           style={{ 
             background: 'var(--primary-light)', 
             color: 'var(--primary)', 
-            opacity: (anyActive || isSubmitting) ? 0.45 : 1,
+            opacity: (activeFeedSession || isSubmitting) ? 0.45 : 1,
             border: suggestedSide === 'mom_r' ? '2px solid var(--primary)' : 'none',
             padding: '10px 4px',
             fontSize: '13px',
@@ -473,11 +484,11 @@ export default function QuickLog() {
         </button>
 
         <button className="button-primary" onClick={handleStartBottle}
-          disabled={anyActive || isSubmitting !== null}
+          disabled={!!activeFeedSession || isSubmitting !== null}
           style={{ 
             background: 'var(--primary)', 
             color: 'white', 
-            opacity: (anyActive || isSubmitting) ? 0.45 : 1,
+            opacity: (activeFeedSession || isSubmitting) ? 0.45 : 1,
             padding: '10px 4px',
             fontSize: '13px',
             borderRadius: '12px'
@@ -520,11 +531,11 @@ export default function QuickLog() {
         </button>
 
         <button className="button-primary" onClick={handleStartTummyTime}
-          disabled={anyActive || isSubmitting !== null}
+          disabled={!!activeTummyTime || isSubmitting !== null}
           style={{ 
             background: 'var(--secondary-light)', 
             color: 'var(--secondary)', 
-            opacity: (anyActive || isSubmitting) ? 0.45 : 1,
+            opacity: (activeTummyTime || isSubmitting) ? 0.45 : 1,
             padding: '10px 4px',
             fontSize: '13px',
             borderRadius: '12px'
@@ -533,11 +544,11 @@ export default function QuickLog() {
         </button>
 
         <button className="button-primary" onClick={handleStartMassage}
-          disabled={anyActive || isSubmitting !== null}
+          disabled={!!activeMassage || isSubmitting !== null}
           style={{ 
             background: '#ffe1ea', 
             color: 'var(--accent)', 
-            opacity: (anyActive || isSubmitting) ? 0.45 : 1,
+            opacity: (activeMassage || isSubmitting) ? 0.45 : 1,
             padding: '10px 4px',
             fontSize: '13px',
             borderRadius: '12px'

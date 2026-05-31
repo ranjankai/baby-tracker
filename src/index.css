@@ -949,3 +949,58 @@ input[type="datetime-local"].input-field {
 .calendar-toggle-btn.active {
   color: var(--primary);
 }
+
+/* Retro Split-Flap Clock Styles */
+.flip-clock-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 6px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.flip-clock-divider {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-main);
+  opacity: 0.6;
+  margin: 0 1px;
+  animation: pulse-dot 1s infinite alternate;
+}
+
+@keyframes pulse-dot {
+  from { opacity: 0.3; }
+  to { opacity: 0.8; }
+}
+
+.flip-card {
+  position: relative;
+  width: 24px;
+  height: 38px;
+  background: #1e293b; /* slate-800 */
+  color: #ffffff;
+  font-family: monospace, var(--sans);
+  font-weight: 800;
+  font-size: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border: 1px solid #334155; /* slate-700 */
+  overflow: hidden;
+}
+
+.flip-card::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(50% - 0.5px);
+  height: 1px;
+  background: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0.5px 0 rgba(255, 255, 255, 0.12);
+  z-index: 5;
+}

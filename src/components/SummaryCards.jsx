@@ -159,55 +159,58 @@ export default function SummaryCards() {
       </div>
 
       {/* Massage */}
-      <div className="card summary-card">
-        <div className="metric-pill rose" style={{ ...pillStyle, position: 'relative' }}>
-          <Sparkles size={14} /> Massage
-          <button 
-            onClick={() => {
-              setTempMassageTarget(massageTarget);
-              setActiveTargetModal('massage');
-            }}
-            style={{
-              position: 'absolute',
-              right: '8px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'inherit',
-              opacity: 0.6,
-              padding: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: '50%',
-              transition: 'opacity 0.2s',
-            }}
-            title="Edit Massage Goal"
-          >
-            <Settings size={12} />
-          </button>
-        </div>
-        <div style={{ fontSize: '15px', fontWeight: '700', marginBottom: '4px' }}>
-          {(() => {
-            const todaySecs = m.massageTodaySeconds || 0;
-            const remaining = Math.max(0, (massageTarget * 60) - todaySecs);
-            if (remaining === 0) return 'Done 🎉';
-            const mins = Math.floor(remaining / 60);
-            const secs = remaining % 60;
-            return secs > 0 ? `${mins}m ${secs}s left` : `${mins}m left`;
-          })()}
-        </div>
-        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500' }}>
-          Last: {m.lastMassage || '—'}
-        </div>
-        {aiInsights?.micro?.massage && (
-          <div style={{ fontSize: '10px', color: 'var(--primary)', marginTop: '6px', opacity: 0.8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-            <MousePointer2 size={10} /> {aiInsights.micro.massage}
+      {(() => {
+        const todaySecs = m.massageTodaySeconds || 0;
+        const minsLogged = Math.floor(todaySecs / 60);
+        const secsLogged = todaySecs % 60;
+        const progressStr = secsLogged > 0 ? `${minsLogged}m ${secsLogged}s` : `${minsLogged}m`;
+        const isGoalMet = minsLogged >= massageTarget;
+
+        return (
+          <div className="card summary-card" style={isGoalMet ? { border: '1px solid #10b98155', boxShadow: '0 0 10px #10b98122' } : {}}>
+            <div className="metric-pill rose" style={{ ...pillStyle, position: 'relative' }}>
+              <Sparkles size={14} /> Massage
+              <button 
+                onClick={() => {
+                  setTempMassageTarget(massageTarget);
+                  setActiveTargetModal('massage');
+                }}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'inherit',
+                  opacity: 0.6,
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '50%',
+                  transition: 'opacity 0.2s',
+                }}
+                title="Edit Massage Goal"
+              >
+                <Settings size={12} />
+              </button>
+            </div>
+            <div style={{ fontSize: '15px', fontWeight: '700', marginBottom: '4px', color: isGoalMet ? '#10b981' : 'inherit' }}>
+              {isGoalMet ? `✓ ${progressStr} (Goal met)` : `${progressStr} / ${massageTarget}m min`}
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500' }}>
+              Last: {m.lastMassage || '—'}
+            </div>
+            {aiInsights?.micro?.massage && (
+              <div style={{ fontSize: '10px', color: 'var(--primary)', marginTop: '6px', opacity: 0.8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                <MousePointer2 size={10} /> {aiInsights.micro.massage}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        );
+      })()}
 
       {/* Diaper Stats */}
       <div className="card summary-card">
