@@ -460,43 +460,43 @@ export default function QuickLog() {
   return (
     <div className="card">
 
-      {/* Header / Brand Title */}
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
-        <div style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '8px', borderRadius: '12px', display: 'flex', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-          <QuickLogIcon size={22} />
-        </div>
-        <span style={{ marginLeft: '10px', fontWeight: '700', fontSize: '16px', lineHeight: 1, color: 'var(--text-main)' }}>
-          Quick Log
-        </span>
+      {/* Header / Dynamic Brand Title Takeover */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: anyActive ? 'center' : 'flex-start', marginBottom: '16px', minHeight: '38px', width: '100%' }}>
+        {!anyActive ? (
+          <>
+            <div style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '8px', borderRadius: '12px', display: 'flex', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+              <QuickLogIcon size={22} />
+            </div>
+            <span style={{ marginLeft: '10px', fontWeight: '700', fontSize: '16px', lineHeight: 1, color: 'var(--text-main)' }}>
+              Quick Log
+            </span>
+          </>
+        ) : (
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'row', 
+            flexWrap: 'wrap', 
+            gap: '6px', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            width: '100%',
+            padding: '0 4px'
+          }}>
+            {activeSessions.map(session => (
+              <ActiveSessionCapsule 
+                key={session.id}
+                session={session}
+                tummyTarget={tummyTarget}
+                massageTarget={massageTarget}
+                metrics={metrics}
+                onPause={handlePauseSession}
+                onResume={handleResumeSession}
+                onStop={handleStopSession}
+              />
+            ))}
+          </div>
+        )}
       </div>
-
-      {/* Concurrent Active Sessions Display Stack */}
-      {anyActive && (
-        <div style={{ 
-          display: 'flex', 
-          flexDirection: 'row', 
-          flexWrap: 'wrap', 
-          gap: '6px', 
-          justifyContent: 'center', 
-          alignItems: 'center', 
-          marginBottom: '16px', 
-          width: '100%',
-          padding: '0 4px'
-        }}>
-          {activeSessions.map(session => (
-            <ActiveSessionCapsule 
-              key={session.id}
-              session={session}
-              tummyTarget={tummyTarget}
-              massageTarget={massageTarget}
-              metrics={metrics}
-              onPause={handlePauseSession}
-              onResume={handleResumeSession}
-              onStop={handleStopSession}
-            />
-          ))}
-        </div>
-      )}
 
       <div className="grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px' }}>
 
