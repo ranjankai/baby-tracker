@@ -988,9 +988,32 @@ input[type="datetime-local"].input-field {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.15), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
   border: 1px solid #334155; /* slate-700 */
   overflow: hidden;
+  
+  /* Trigger the 3D flap animation on mount (every second the digit updates) */
+  animation: flap-down 0.28s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transform-origin: 50% 50%;
+  perspective: 300px;
+}
+
+@keyframes flap-down {
+  0% {
+    transform: rotateX(60deg) scale(0.95);
+    background: #0f172a; /* Darker shading as it starts to flap */
+    filter: brightness(0.7);
+  }
+  50% {
+    transform: rotateX(-15deg) scale(0.98);
+    background: #1e293b;
+    filter: brightness(0.95);
+  }
+  100% {
+    transform: rotateX(0deg) scale(1);
+    background: #1e293b;
+    filter: brightness(1);
+  }
 }
 
 .flip-card::after {

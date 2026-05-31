@@ -15,11 +15,11 @@ function FlipTimer({ seconds }) {
 
   return (
     <div className="flip-clock-container">
-      <div className="flip-card">{m1}</div>
-      <div className="flip-card">{m2}</div>
+      <div key={`m1-${m1}`} className="flip-card">{m1}</div>
+      <div key={`m2-${m2}`} className="flip-card">{m2}</div>
       <div className="flip-clock-divider">:</div>
-      <div className="flip-card">{s1}</div>
-      <div className="flip-card">{s2}</div>
+      <div key={`s1-${s1}`} className="flip-card">{s1}</div>
+      <div key={`s2-${s2}`} className="flip-card">{s2}</div>
     </div>
   );
 }
