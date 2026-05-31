@@ -125,7 +125,7 @@ function ActiveSessionCapsule({ session, onPause, onResume, onStop, tummyTarget,
         }}>
           {Icon && <Icon size={16} flip={session.type === 'mom_r'} />}
         </div>
-        <span style={{ fontWeight: '700', fontSize: '14px', color: 'var(--text-main)' }}>
+        <span style={{ fontWeight: '700', fontSize: '14px', color: '#4a4a4a' }}>
           {label}
         </span>
       </div>
@@ -546,10 +546,10 @@ export default function QuickLog() {
               onClick={() => isActive ? handleStopSession(activeFeedSession) : handleStartMomFeed('left')}
               disabled={(!!activeFeedSession && !isActive) || isSubmitting !== null}
               style={{ 
-                background: 'var(--primary-light)', 
-                color: 'var(--primary)', 
+                background: isActive ? 'var(--primary)' : 'var(--primary-light)', 
+                color: isActive ? 'white' : 'var(--primary)', 
                 opacity: (activeFeedSession && !isActive) || isSubmitting ? 0.45 : 1,
-                border: isActive ? '2px solid var(--primary)' : (isSuggested ? '2px dashed var(--primary)' : 'none'),
+                border: isActive ? '2px solid white' : (isSuggested ? '2px dashed var(--primary)' : 'none'),
                 boxShadow: 'none',
                 padding: '10px 4px',
                 fontSize: '13px',
@@ -568,10 +568,10 @@ export default function QuickLog() {
               onClick={() => isActive ? handleStopSession(activeFeedSession) : handleStartMomFeed('right')}
               disabled={(!!activeFeedSession && !isActive) || isSubmitting !== null}
               style={{ 
-                background: 'var(--primary-light)', 
-                color: 'var(--primary)', 
+                background: isActive ? 'var(--primary)' : 'var(--primary-light)', 
+                color: isActive ? 'white' : 'var(--primary)', 
                 opacity: (activeFeedSession && !isActive) || isSubmitting ? 0.45 : 1,
-                border: isActive ? '2px solid var(--primary)' : (isSuggested ? '2px dashed var(--primary)' : 'none'),
+                border: isActive ? '2px solid white' : (isSuggested ? '2px dashed var(--primary)' : 'none'),
                 boxShadow: 'none',
                 padding: '10px 4px',
                 fontSize: '13px',
