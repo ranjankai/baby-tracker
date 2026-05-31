@@ -485,6 +485,12 @@ export default function QuickLog() {
 
   const anyActive = activeSessions.length > 0;
 
+  // Strict co-occurrence helper flags
+  const isFeedActive = !!activeFeedSession;
+  const isTummyActive = !!activeTummyTime;
+  const isMassageActive = !!activeMassage;
+  const isTummyOrMassageActive = isTummyActive || isMassageActive;
+
   useEffect(() => {
     if (anyActive) {
       setIsSubmitting(null);
@@ -541,14 +547,15 @@ export default function QuickLog() {
         {(() => {
           const isActive = activeFeedSession?.type === 'mom_l';
           const isSuggested = !activeFeedSession && suggestedSide === 'mom_l';
+          const isDisabled = (isFeedActive && !isActive) || isTummyOrMassageActive || isSubmitting !== null;
           return (
             <button className={`button-primary ${isSuggested ? 'suggested-side' : ''}`} 
               onClick={() => isActive ? handleStopSession(activeFeedSession) : handleStartMomFeed('left')}
-              disabled={(!!activeFeedSession && !isActive) || isSubmitting !== null}
+              disabled={isDisabled}
               style={{ 
                 background: isActive ? 'var(--primary)' : 'var(--primary-light)', 
                 color: isActive ? 'white' : 'var(--primary)', 
-                opacity: (activeFeedSession && !isActive) || isSubmitting ? 0.45 : 1,
+                opacity: isDisabled ? 0.45 : 1,
                 border: isActive ? '2px solid white' : (isSuggested ? '2px dashed var(--primary)' : 'none'),
                 boxShadow: 'none',
                 padding: '10px 4px',
@@ -563,14 +570,15 @@ export default function QuickLog() {
         {(() => {
           const isActive = activeFeedSession?.type === 'mom_r';
           const isSuggested = !activeFeedSession && suggestedSide === 'mom_r';
+          const isDisabled = (isFeedActive && !isActive) || isTummyOrMassageActive || isSubmitting !== null;
           return (
             <button className={`button-primary ${isSuggested ? 'suggested-side' : ''}`} 
               onClick={() => isActive ? handleStopSession(activeFeedSession) : handleStartMomFeed('right')}
-              disabled={(!!activeFeedSession && !isActive) || isSubmitting !== null}
+              disabled={isDisabled}
               style={{ 
                 background: isActive ? 'var(--primary)' : 'var(--primary-light)', 
                 color: isActive ? 'white' : 'var(--primary)', 
-                opacity: (activeFeedSession && !isActive) || isSubmitting ? 0.45 : 1,
+                opacity: isDisabled ? 0.45 : 1,
                 border: isActive ? '2px solid white' : (isSuggested ? '2px dashed var(--primary)' : 'none'),
                 boxShadow: 'none',
                 padding: '10px 4px',
@@ -584,13 +592,14 @@ export default function QuickLog() {
 
         {(() => {
           const isActive = activeFeedSession?.type === 'top';
+          const isDisabled = (isFeedActive && !isActive) || isTummyOrMassageActive || isSubmitting !== null;
           return (
             <button className="button-primary" onClick={() => isActive ? handleStopSession(activeFeedSession) : handleStartBottle()}
-              disabled={(!!activeFeedSession && !isActive) || isSubmitting !== null}
+              disabled={isDisabled}
               style={{ 
                 background: 'var(--primary)', 
                 color: 'white', 
-                opacity: (activeFeedSession && !isActive) || isSubmitting ? 0.45 : 1,
+                opacity: isDisabled ? 0.45 : 1,
                 boxShadow: 'none',
                 border: isActive ? '2px solid white' : 'none',
                 padding: '10px 4px',
@@ -603,9 +612,11 @@ export default function QuickLog() {
         })()}
 
         <button className="button-primary" onClick={openSpitUpModal}
+          disabled={isSubmitting !== null}
           style={{ 
             background: '#fef3c7', 
             color: '#b45309',
+            opacity: isSubmitting !== null ? 0.45 : 1,
             padding: '10px 4px',
             fontSize: '13px',
             borderRadius: '12px'
@@ -615,9 +626,11 @@ export default function QuickLog() {
 
         {/* Row 2: Outputs & Timed activities */}
         <button className="button-primary" onClick={() => openDiaperModal(false)}
+          disabled={isSubmitting !== null}
           style={{ 
             background: 'var(--secondary-light)', 
             color: 'var(--secondary)',
+            opacity: isSubmitting !== null ? 0.45 : 1,
             padding: '10px 4px',
             fontSize: '13px',
             borderRadius: '12px'
@@ -626,9 +639,11 @@ export default function QuickLog() {
         </button>
 
         <button className="button-primary" onClick={() => openDiaperModal(true)}
+          disabled={isSubmitting !== null}
           style={{ 
             background: 'var(--secondary-light)', 
             color: 'var(--secondary)',
+            opacity: isSubmitting !== null ? 0.45 : 1,
             padding: '10px 4px',
             fontSize: '13px',
             borderRadius: '12px'
@@ -638,13 +653,14 @@ export default function QuickLog() {
 
         {(() => {
           const isActive = !!activeTummyTime;
+          const isDisabled = isFeedActive || isSubmitting !== null;
           return (
             <button className="button-primary" onClick={() => isActive ? handleStopSession(activeTummyTime) : handleStartTummyTime()}
-              disabled={isSubmitting !== null}
+              disabled={isDisabled}
               style={{ 
                 background: 'var(--secondary-light)', 
                 color: 'var(--secondary)', 
-                opacity: isSubmitting ? 0.45 : 1,
+                opacity: isDisabled ? 0.45 : 1,
                 boxShadow: 'none',
                 border: isActive ? '1.5px solid #10b981' : 'none',
                 padding: '10px 4px',
@@ -658,13 +674,14 @@ export default function QuickLog() {
 
         {(() => {
           const isActive = !!activeMassage;
+          const isDisabled = isFeedActive || isSubmitting !== null;
           return (
             <button className="button-primary" onClick={() => isActive ? handleStopSession(activeMassage) : handleStartMassage()}
-              disabled={isSubmitting !== null}
+              disabled={isDisabled}
               style={{ 
                 background: '#ffe1ea', 
                 color: 'var(--accent)', 
-                opacity: isSubmitting ? 0.45 : 1,
+                opacity: isDisabled ? 0.45 : 1,
                 boxShadow: 'none',
                 border: isActive ? '1.5px solid #f472b6' : 'none',
                 padding: '10px 4px',
