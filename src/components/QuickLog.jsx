@@ -24,8 +24,8 @@ function FlipTimer({ seconds }) {
   );
 }
 
-// ── Reusable Concurrent Active Session Timer Card ──────────────────────────
-function ActiveSessionCard({ session, onPause, onResume, onStop, tummyTarget, massageTarget, metrics }) {
+// ── Reusable Concurrent Active Session Timer Capsule (Chain-Link) ──────────
+function ActiveSessionCapsule({ session, onPause, onResume, onStop, tummyTarget, massageTarget, metrics }) {
   const [timer, setTimer] = useState(0);
 
   const isCountdown = session.type === 'tummy_time'; // ONLY tummy_time is a countdown! Massage is count-up!
@@ -73,38 +73,76 @@ function ActiveSessionCard({ session, onPause, onResume, onStop, tummyTarget, ma
     return () => clearInterval(interval);
   }, [session, tummyTarget, massageTarget, metrics]);
 
-  const label = 
-    session.type === 'tummy_time' ? 'Tummy Time' : 
-    session.type === 'massage' ? 'Massage' : 
-    session.type === 'mom_l' ? 'Breast (L)' :
-    session.type === 'mom_r' ? 'Breast (R)' :
-    session.type === 'top' ? 'Top Feed' : 'Active Session';
+  // Determine glow color based on active session type
+  const themeColor = 
+    session.type === 'tummy_time' ? '#10b981' : // Mint
+    session.type === 'massage' ? '#f472b6' : // Rose
+    '#9d8df1'; // Lavender for feeds
 
   return (
-    <div className="card active-session-panel" style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '10px', border: '1px solid var(--border-soft)', background: 'rgba(0,0,0,0.015)', borderRadius: '16px', width: '100%', boxShadow: 'none', marginBottom: '8px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-main)' }}>
-          {label} {session.is_paused && <span style={{ color: 'var(--accent)', fontWeight: 800 }}>(Paused)</span>}
-        </span>
-        <FlipTimer seconds={timer} />
-      </div>
-      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-        <button 
-          className="button-primary" 
-          onClick={() => onStop(session, false)}
-          style={{ background: 'var(--accent)', color: 'white', padding: '0', height: '36px', borderRadius: '10px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', border: 'none', cursor: 'pointer', flex: 1 }}
-        >
-          <Square size={13} fill="currentColor" /> Stop
-        </button>
-        <button 
-          className="button-primary" 
-          onClick={() => session.is_paused ? onResume(session) : onPause(session)}
-          style={{ background: session.is_paused ? 'var(--secondary)' : '#f3f0ff', color: session.is_paused ? 'white' : 'var(--primary)', padding: '0', height: '36px', borderRadius: '10px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', border: 'none', cursor: 'pointer', flex: 1 }}
-        >
-          {session.is_paused ? <Play size={13} fill="currentColor" /> : <Pause size={13} fill="currentColor" />}
-          {session.is_paused ? 'Resume' : 'Pause'}
-        </button>
-      </div>
+    <div className="active-session-capsule" style={{ 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      gap: '6px',
+      padding: '4px 8px',
+      borderRadius: '24px',
+      border: `1.5px solid ${themeColor}44`,
+      boxShadow: `0 0 10px ${themeColor}18`,
+      background: 'rgba(255,255,255,0.7)',
+      flexShrink: 0,
+      margin: '4px'
+    }}>
+      {/* Circular Stop Button */}
+      <button 
+        onClick={() => onStop(session, false)}
+        style={{
+          width: '28px',
+          height: '28px',
+          borderRadius: '50%',
+          border: 'none',
+          background: 'var(--accent-light)',
+          color: 'var(--accent)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          flexShrink: 0,
+          transition: 'transform 0.15s ease'
+        }}
+        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
+        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+        title="Stop"
+      >
+        <Square size={9} fill="currentColor" />
+      </button>
+
+      {/* Retro Flip Clock Timer */}
+      <FlipTimer seconds={timer} />
+
+      {/* Circular Play/Pause Button */}
+      <button 
+        onClick={() => session.is_paused ? onResume(session) : onPause(session)}
+        style={{
+          width: '28px',
+          height: '28px',
+          borderRadius: '50%',
+          border: 'none',
+          background: session.is_paused ? 'var(--secondary-light)' : '#f3f0ff',
+          color: session.is_paused ? 'var(--secondary)' : 'var(--primary)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          flexShrink: 0,
+          transition: 'transform 0.15s ease'
+        }}
+        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
+        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+        title={session.is_paused ? 'Resume' : 'Pause'}
+      >
+        {session.is_paused ? <Play size={9} fill="currentColor" /> : <Pause size={9} fill="currentColor" />}
+      </button>
     </div>
   );
 }
@@ -434,9 +472,19 @@ export default function QuickLog() {
 
       {/* Concurrent Active Sessions Display Stack */}
       {anyActive && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', width: '100%' }}>
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'row', 
+          flexWrap: 'wrap', 
+          gap: '6px', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          marginBottom: '16px', 
+          width: '100%',
+          padding: '0 4px'
+        }}>
           {activeSessions.map(session => (
-            <ActiveSessionCard 
+            <ActiveSessionCapsule 
               key={session.id}
               session={session}
               tummyTarget={tummyTarget}
@@ -453,48 +501,67 @@ export default function QuickLog() {
       <div className="grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '8px' }}>
 
         {/* Row 1: Feeding & Spit-up */}
-        <button className={`button-primary ${suggestedSide === 'mom_l' ? 'suggested-side' : ''}`} 
-          onClick={() => handleStartMomFeed('left')}
-          disabled={!!activeFeedSession || isSubmitting !== null}
-          style={{ 
-            background: 'var(--primary-light)', 
-            color: 'var(--primary)', 
-            opacity: (activeFeedSession || isSubmitting) ? 0.45 : 1,
-            border: suggestedSide === 'mom_l' ? '2px solid var(--primary)' : 'none',
-            padding: '10px 4px',
-            fontSize: '13px',
-            borderRadius: '12px'
-          }}>
-          <Breastfeed size={16} /> Left
-        </button>
+        {(() => {
+          const isActive = activeFeedSession?.type === 'mom_l';
+          return (
+            <button className={`button-primary ${suggestedSide === 'mom_l' ? 'suggested-side' : ''}`} 
+              onClick={() => handleStartMomFeed('left')}
+              disabled={!!activeFeedSession || isSubmitting !== null}
+              style={{ 
+                background: 'var(--primary-light)', 
+                color: 'var(--primary)', 
+                opacity: isSubmitting ? 0.45 : 1,
+                border: isActive ? '2px solid var(--primary)' : (suggestedSide === 'mom_l' ? '2px dashed var(--primary)' : 'none'),
+                boxShadow: isActive ? '0 0 10px var(--primary)' : 'none',
+                padding: '10px 4px',
+                fontSize: '13px',
+                borderRadius: '12px'
+              }}>
+              <Breastfeed size={16} /> Left
+            </button>
+          );
+        })()}
 
-        <button className={`button-primary ${suggestedSide === 'mom_r' ? 'suggested-side' : ''}`} 
-          onClick={() => handleStartMomFeed('right')}
-          disabled={!!activeFeedSession || isSubmitting !== null}
-          style={{ 
-            background: 'var(--primary-light)', 
-            color: 'var(--primary)', 
-            opacity: (activeFeedSession || isSubmitting) ? 0.45 : 1,
-            border: suggestedSide === 'mom_r' ? '2px solid var(--primary)' : 'none',
-            padding: '10px 4px',
-            fontSize: '13px',
-            borderRadius: '12px'
-          }}>
-          <Breastfeed size={16} flip /> Right
-        </button>
+        {(() => {
+          const isActive = activeFeedSession?.type === 'mom_r';
+          return (
+            <button className={`button-primary ${suggestedSide === 'mom_r' ? 'suggested-side' : ''}`} 
+              onClick={() => handleStartMomFeed('right')}
+              disabled={!!activeFeedSession || isSubmitting !== null}
+              style={{ 
+                background: 'var(--primary-light)', 
+                color: 'var(--primary)', 
+                opacity: isSubmitting ? 0.45 : 1,
+                border: isActive ? '2px solid var(--primary)' : (suggestedSide === 'mom_r' ? '2px dashed var(--primary)' : 'none'),
+                boxShadow: isActive ? '0 0 10px var(--primary)' : 'none',
+                padding: '10px 4px',
+                fontSize: '13px',
+                borderRadius: '12px'
+              }}>
+              <Breastfeed size={16} flip /> Right
+            </button>
+          );
+        })()}
 
-        <button className="button-primary" onClick={handleStartBottle}
-          disabled={!!activeFeedSession || isSubmitting !== null}
-          style={{ 
-            background: 'var(--primary)', 
-            color: 'white', 
-            opacity: (activeFeedSession || isSubmitting) ? 0.45 : 1,
-            padding: '10px 4px',
-            fontSize: '13px',
-            borderRadius: '12px'
-          }}>
-          <TopFeed size={16} /> Top
-        </button>
+        {(() => {
+          const isActive = activeFeedSession?.type === 'top';
+          return (
+            <button className="button-primary" onClick={handleStartBottle}
+              disabled={!!activeFeedSession || isSubmitting !== null}
+              style={{ 
+                background: 'var(--primary)', 
+                color: 'white', 
+                opacity: isSubmitting ? 0.45 : 1,
+                boxShadow: isActive ? '0 0 12px var(--primary)' : 'none',
+                border: isActive ? '2px solid white' : 'none',
+                padding: '10px 4px',
+                fontSize: '13px',
+                borderRadius: '12px'
+              }}>
+              <TopFeed size={16} /> Top
+            </button>
+          );
+        })()}
 
         <button className="button-primary" onClick={openSpitUpModal}
           style={{ 
@@ -530,31 +597,45 @@ export default function QuickLog() {
           <TummyTime size={16} /> Free
         </button>
 
-        <button className="button-primary" onClick={handleStartTummyTime}
-          disabled={!!activeTummyTime || isSubmitting !== null}
-          style={{ 
-            background: 'var(--secondary-light)', 
-            color: 'var(--secondary)', 
-            opacity: (activeTummyTime || isSubmitting) ? 0.45 : 1,
-            padding: '10px 4px',
-            fontSize: '13px',
-            borderRadius: '12px'
-          }}>
-          <TummyTime size={16} /> Tummy
-        </button>
+        {(() => {
+          const isActive = !!activeTummyTime;
+          return (
+            <button className="button-primary" onClick={handleStartTummyTime}
+              disabled={isActive || isSubmitting !== null}
+              style={{ 
+                background: 'var(--secondary-light)', 
+                color: 'var(--secondary)', 
+                opacity: isSubmitting ? 0.45 : 1,
+                boxShadow: isActive ? '0 0 10px #10b981' : 'none',
+                border: isActive ? '1.5px solid #10b981' : 'none',
+                padding: '10px 4px',
+                fontSize: '13px',
+                borderRadius: '12px'
+              }}>
+              <TummyTime size={16} /> Tummy
+            </button>
+          );
+        })()}
 
-        <button className="button-primary" onClick={handleStartMassage}
-          disabled={!!activeMassage || isSubmitting !== null}
-          style={{ 
-            background: '#ffe1ea', 
-            color: 'var(--accent)', 
-            opacity: (activeMassage || isSubmitting) ? 0.45 : 1,
-            padding: '10px 4px',
-            fontSize: '13px',
-            borderRadius: '12px'
-          }}>
-          <Sparkles size={16} /> Massage
-        </button>
+        {(() => {
+          const isActive = !!activeMassage;
+          return (
+            <button className="button-primary" onClick={handleStartMassage}
+              disabled={isActive || isSubmitting !== null}
+              style={{ 
+                background: '#ffe1ea', 
+                color: 'var(--accent)', 
+                opacity: isSubmitting ? 0.45 : 1,
+                boxShadow: isActive ? '0 0 10px #f472b6' : 'none',
+                border: isActive ? '1.5px solid #f472b6' : 'none',
+                padding: '10px 4px',
+                fontSize: '13px',
+                borderRadius: '12px'
+              }}>
+              <Sparkles size={16} /> Massage
+            </button>
+          );
+        })()}
 
       </div>
 
