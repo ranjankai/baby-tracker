@@ -233,11 +233,44 @@ export function BabyProvider({ children }) {
   }, []);
 
   const addEvent = async (eventData) => {
-    const newEvent = { start_time: new Date().toISOString(), ...eventData };
+    const tempId = 'temp_' + Date.now();
+    const newEvent = { id: tempId, start_time: new Date().toISOString(), ...eventData };
+
+    // Optimistic state updates
+    if (['top', 'mom_l', 'mom_r'].includes(eventData.type)) {
+      setLastFeed(newEvent);
+    } else if (eventData.type === 'tummy_time') {
+      setActiveTummyTime(newEvent);
+    } else if (eventData.type === 'massage') {
+      setActiveMassage(newEvent);
+    }
+
     if (!supabase) return null;
-    const { data, error } = await supabase.from('baby_events').insert([newEvent]).select();
-    if (error) throw error;
-    return data ? data[0] : null;
+    try {
+      const { data, error } = await supabase.from('baby_events').insert([{ ...newEvent, id: undefined }]).select();
+      if (error) throw error;
+      const savedEvent = data ? data[0] : null;
+      if (savedEvent) {
+        if (['top', 'mom_l', 'mom_r'].includes(savedEvent.type)) {
+          setLastFeed(savedEvent);
+        } else if (savedEvent.type === 'tummy_time') {
+          setActiveTummyTime(savedEvent);
+        } else if (savedEvent.type === 'massage') {
+          setActiveMassage(savedEvent);
+        }
+      }
+      return savedEvent;
+    } catch (error) {
+      // Rollback optimistic updates on error
+      if (['top', 'mom_l', 'mom_r'].includes(eventData.type)) {
+        setLastFeed(prev => prev?.id === tempId ? null : prev);
+      } else if (eventData.type === 'tummy_time') {
+        setActiveTummyTime(prev => prev?.id === tempId ? null : prev);
+      } else if (eventData.type === 'massage') {
+        setActiveMassage(prev => prev?.id === tempId ? null : prev);
+      }
+      throw error;
+    }
   };
 
   const updateEvent = async (id, updates) => {

@@ -304,6 +304,7 @@ export default function QuickLog() {
     const timeout = setTimeout(() => setIsSubmitting(null), 5000); // 5s safety hatch
     try {
       await addEvent({ type: side === 'left' ? 'mom_l' : 'mom_r' });
+      setIsSubmitting(null);
     } catch (error) {
       if (error?.code === '23505') {
         window.location.reload();
@@ -320,6 +321,7 @@ export default function QuickLog() {
     const timeout = setTimeout(() => setIsSubmitting(null), 5000); // 5s safety hatch
     try {
       await addEvent({ type: 'top' });
+      setIsSubmitting(null);
     } catch (error) {
       if (error?.code === '23505') {
         window.location.reload();
@@ -336,6 +338,7 @@ export default function QuickLog() {
     const timeout = setTimeout(() => setIsSubmitting(null), 5000); // 5s safety hatch
     try {
       await addEvent({ type: 'tummy_time' });
+      setIsSubmitting(null);
     } catch (error) {
       if (error?.code === '23505') {
         window.location.reload();
@@ -352,6 +355,7 @@ export default function QuickLog() {
     const timeout = setTimeout(() => setIsSubmitting(null), 5000); // 5s safety hatch
     try {
       await addEvent({ type: 'massage' });
+      setIsSubmitting(null);
     } catch (error) {
       if (error?.code === '23505') {
         window.location.reload();
@@ -503,16 +507,17 @@ export default function QuickLog() {
         {/* Row 1: Feeding & Spit-up */}
         {(() => {
           const isActive = activeFeedSession?.type === 'mom_l';
+          const isSuggested = !activeFeedSession && suggestedSide === 'mom_l';
           return (
-            <button className={`button-primary ${suggestedSide === 'mom_l' ? 'suggested-side' : ''}`} 
-              onClick={() => handleStartMomFeed('left')}
-              disabled={!!activeFeedSession || isSubmitting !== null}
+            <button className={`button-primary ${isSuggested ? 'suggested-side' : ''}`} 
+              onClick={() => isActive ? handleStopSession(activeFeedSession) : handleStartMomFeed('left')}
+              disabled={(!!activeFeedSession && !isActive) || isSubmitting !== null}
               style={{ 
                 background: 'var(--primary-light)', 
                 color: 'var(--primary)', 
-                opacity: isSubmitting ? 0.45 : 1,
-                border: isActive ? '2px solid var(--primary)' : (suggestedSide === 'mom_l' ? '2px dashed var(--primary)' : 'none'),
-                boxShadow: isActive ? '0 0 10px var(--primary)' : 'none',
+                opacity: (activeFeedSession && !isActive) || isSubmitting ? 0.45 : 1,
+                border: isActive ? '2px solid var(--primary)' : (isSuggested ? '2px dashed var(--primary)' : 'none'),
+                boxShadow: isActive ? '0 0 18px 4px var(--primary)' : 'none',
                 padding: '10px 4px',
                 fontSize: '13px',
                 borderRadius: '12px'
@@ -524,16 +529,17 @@ export default function QuickLog() {
 
         {(() => {
           const isActive = activeFeedSession?.type === 'mom_r';
+          const isSuggested = !activeFeedSession && suggestedSide === 'mom_r';
           return (
-            <button className={`button-primary ${suggestedSide === 'mom_r' ? 'suggested-side' : ''}`} 
-              onClick={() => handleStartMomFeed('right')}
-              disabled={!!activeFeedSession || isSubmitting !== null}
+            <button className={`button-primary ${isSuggested ? 'suggested-side' : ''}`} 
+              onClick={() => isActive ? handleStopSession(activeFeedSession) : handleStartMomFeed('right')}
+              disabled={(!!activeFeedSession && !isActive) || isSubmitting !== null}
               style={{ 
                 background: 'var(--primary-light)', 
                 color: 'var(--primary)', 
-                opacity: isSubmitting ? 0.45 : 1,
-                border: isActive ? '2px solid var(--primary)' : (suggestedSide === 'mom_r' ? '2px dashed var(--primary)' : 'none'),
-                boxShadow: isActive ? '0 0 10px var(--primary)' : 'none',
+                opacity: (activeFeedSession && !isActive) || isSubmitting ? 0.45 : 1,
+                border: isActive ? '2px solid var(--primary)' : (isSuggested ? '2px dashed var(--primary)' : 'none'),
+                boxShadow: isActive ? '0 0 18px 4px var(--primary)' : 'none',
                 padding: '10px 4px',
                 fontSize: '13px',
                 borderRadius: '12px'
@@ -546,13 +552,13 @@ export default function QuickLog() {
         {(() => {
           const isActive = activeFeedSession?.type === 'top';
           return (
-            <button className="button-primary" onClick={handleStartBottle}
-              disabled={!!activeFeedSession || isSubmitting !== null}
+            <button className="button-primary" onClick={() => isActive ? handleStopSession(activeFeedSession) : handleStartBottle()}
+              disabled={(!!activeFeedSession && !isActive) || isSubmitting !== null}
               style={{ 
                 background: 'var(--primary)', 
                 color: 'white', 
-                opacity: isSubmitting ? 0.45 : 1,
-                boxShadow: isActive ? '0 0 12px var(--primary)' : 'none',
+                opacity: (activeFeedSession && !isActive) || isSubmitting ? 0.45 : 1,
+                boxShadow: isActive ? '0 0 18px 4px var(--primary)' : 'none',
                 border: isActive ? '2px solid white' : 'none',
                 padding: '10px 4px',
                 fontSize: '13px',
@@ -600,13 +606,13 @@ export default function QuickLog() {
         {(() => {
           const isActive = !!activeTummyTime;
           return (
-            <button className="button-primary" onClick={handleStartTummyTime}
-              disabled={isActive || isSubmitting !== null}
+            <button className="button-primary" onClick={() => isActive ? handleStopSession(activeTummyTime) : handleStartTummyTime()}
+              disabled={isSubmitting !== null}
               style={{ 
                 background: 'var(--secondary-light)', 
                 color: 'var(--secondary)', 
                 opacity: isSubmitting ? 0.45 : 1,
-                boxShadow: isActive ? '0 0 10px #10b981' : 'none',
+                boxShadow: isActive ? '0 0 18px 4px #10b981' : 'none',
                 border: isActive ? '1.5px solid #10b981' : 'none',
                 padding: '10px 4px',
                 fontSize: '13px',
@@ -620,13 +626,13 @@ export default function QuickLog() {
         {(() => {
           const isActive = !!activeMassage;
           return (
-            <button className="button-primary" onClick={handleStartMassage}
-              disabled={isActive || isSubmitting !== null}
+            <button className="button-primary" onClick={() => isActive ? handleStopSession(activeMassage) : handleStartMassage()}
+              disabled={isSubmitting !== null}
               style={{ 
                 background: '#ffe1ea', 
                 color: 'var(--accent)', 
                 opacity: isSubmitting ? 0.45 : 1,
-                boxShadow: isActive ? '0 0 10px #f472b6' : 'none',
+                boxShadow: isActive ? '0 0 18px 4px #f472b6' : 'none',
                 border: isActive ? '1.5px solid #f472b6' : 'none',
                 padding: '10px 4px',
                 fontSize: '13px',
