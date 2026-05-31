@@ -73,76 +73,110 @@ function ActiveSessionCapsule({ session, onPause, onResume, onStop, tummyTarget,
     return () => clearInterval(interval);
   }, [session, tummyTarget, massageTarget, metrics]);
 
-  // Determine glow color based on active session type
-  const themeColor = 
-    session.type === 'tummy_time' ? '#10b981' : // Mint
-    session.type === 'massage' ? '#f472b6' : // Rose
-    '#9d8df1'; // Lavender for feeds
+  // Activity-specific styling and labeling
+  let label = '';
+  let Icon = null;
+  let themeColor = 'var(--primary)';
+
+  if (session.type === 'mom_l') {
+    label = 'Mom (L)';
+    Icon = Breastfeed;
+    themeColor = 'var(--primary)';
+  } else if (session.type === 'mom_r') {
+    label = 'Mom (R)';
+    Icon = Breastfeed;
+    themeColor = 'var(--primary)';
+  } else if (session.type === 'top') {
+    label = 'Bottle';
+    Icon = TopFeed;
+    themeColor = 'var(--primary)';
+  } else if (session.type === 'tummy_time') {
+    label = 'Tummy Time';
+    Icon = TummyTime;
+    themeColor = '#10b981';
+  } else if (session.type === 'massage') {
+    label = 'Massage';
+    Icon = Sparkles;
+    themeColor = '#f472b6';
+  }
 
   return (
-    <div className="active-session-capsule" style={{ 
+    <div className="active-session-row" style={{ 
       display: 'flex', 
       alignItems: 'center', 
-      justifyContent: 'center', 
-      gap: '6px',
-      padding: '4px 8px',
-      borderRadius: '24px',
-      border: `1.5px solid ${themeColor}44`,
-      boxShadow: `0 0 10px ${themeColor}18`,
-      background: 'rgba(255,255,255,0.7)',
-      flexShrink: 0,
-      margin: '4px'
+      justifyContent: 'space-between', 
+      width: '100%',
+      padding: '8px 12px',
+      borderRadius: '16px',
+      border: '1.5px solid var(--border-soft)',
+      background: 'rgba(255, 255, 255, 0.85)',
+      boxSizing: 'border-box',
+      margin: '2px 0'
     }}>
-      {/* Circular Stop Button */}
-      <button 
-        onClick={() => onStop(session, false)}
-        style={{
-          width: '28px',
-          height: '28px',
-          borderRadius: '50%',
-          border: 'none',
-          background: 'var(--accent-light)',
-          color: 'var(--accent)',
+      {/* Left side: Icon + Activity Name */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ 
+          background: 'var(--bg-card)', 
+          color: themeColor, 
+          padding: '6px', 
+          borderRadius: '10px', 
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          flexShrink: 0,
-          transition: 'transform 0.15s ease'
-        }}
-        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
-        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-        title="Stop"
-      >
-        <Square size={9} fill="currentColor" />
-      </button>
+          border: '1px solid var(--border-soft)'
+        }}>
+          {Icon && <Icon size={16} flip={session.type === 'mom_r'} />}
+        </div>
+        <span style={{ fontWeight: '700', fontSize: '14px', color: 'var(--text-main)' }}>
+          {label}
+        </span>
+      </div>
 
-      {/* Retro Flip Clock Timer */}
-      <FlipTimer seconds={timer} />
+      {/* Right side: Controls & Flip Timer */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Play/Pause Button */}
+        <button 
+          onClick={() => session.is_paused ? onResume(session) : onPause(session)}
+          style={{
+            width: '28px',
+            height: '28px',
+            borderRadius: '50%',
+            border: 'none',
+            background: session.is_paused ? 'var(--secondary-light)' : 'rgba(0, 0, 0, 0.04)',
+            color: session.is_paused ? 'var(--secondary)' : 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            flexShrink: 0
+          }}
+          title={session.is_paused ? 'Resume' : 'Pause'}
+        >
+          {session.is_paused ? <Play size={10} fill="currentColor" /> : <Pause size={10} fill="currentColor" />}
+        </button>
 
-      {/* Circular Play/Pause Button */}
-      <button 
-        onClick={() => session.is_paused ? onResume(session) : onPause(session)}
-        style={{
-          width: '28px',
-          height: '28px',
-          borderRadius: '50%',
-          border: 'none',
-          background: session.is_paused ? 'var(--secondary-light)' : '#f3f0ff',
-          color: session.is_paused ? 'var(--secondary)' : 'var(--primary)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          flexShrink: 0,
-          transition: 'transform 0.15s ease'
-        }}
-        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
-        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-        title={session.is_paused ? 'Resume' : 'Pause'}
-      >
-        {session.is_paused ? <Play size={9} fill="currentColor" /> : <Pause size={9} fill="currentColor" />}
-      </button>
+        {/* Retro Flip Clock Timer */}
+        <FlipTimer seconds={timer} />
+
+        {/* Circular Stop Button */}
+        <button 
+          onClick={() => onStop(session, false)}
+          style={{
+            width: '28px',
+            height: '28px',
+            borderRadius: '50%',
+            border: 'none',
+            background: 'var(--accent-light)',
+            color: 'var(--accent)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            flexShrink: 0
+          }}
+          title="Stop"
+        >
+          <Square size={10} fill="currentColor" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -465,7 +499,7 @@ export default function QuickLog() {
     <div className="card">
 
       {/* Header / Dynamic Brand Title Takeover */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: anyActive ? 'center' : 'flex-start', marginBottom: '16px', minHeight: '38px', width: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', marginBottom: '16px', minHeight: '38px', width: '100%' }}>
         {!anyActive ? (
           <>
             <div style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '8px', borderRadius: '12px', display: 'flex', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
@@ -478,13 +512,12 @@ export default function QuickLog() {
         ) : (
           <div style={{ 
             display: 'flex', 
-            flexDirection: 'row', 
-            flexWrap: 'wrap', 
+            flexDirection: 'column', 
             gap: '6px', 
             justifyContent: 'center', 
             alignItems: 'center', 
             width: '100%',
-            padding: '0 4px'
+            padding: '0'
           }}>
             {activeSessions.map(session => (
               <ActiveSessionCapsule 
@@ -517,7 +550,7 @@ export default function QuickLog() {
                 color: 'var(--primary)', 
                 opacity: (activeFeedSession && !isActive) || isSubmitting ? 0.45 : 1,
                 border: isActive ? '2px solid var(--primary)' : (isSuggested ? '2px dashed var(--primary)' : 'none'),
-                boxShadow: isActive ? '0 0 18px 4px var(--primary)' : 'none',
+                boxShadow: 'none',
                 padding: '10px 4px',
                 fontSize: '13px',
                 borderRadius: '12px'
@@ -539,7 +572,7 @@ export default function QuickLog() {
                 color: 'var(--primary)', 
                 opacity: (activeFeedSession && !isActive) || isSubmitting ? 0.45 : 1,
                 border: isActive ? '2px solid var(--primary)' : (isSuggested ? '2px dashed var(--primary)' : 'none'),
-                boxShadow: isActive ? '0 0 18px 4px var(--primary)' : 'none',
+                boxShadow: 'none',
                 padding: '10px 4px',
                 fontSize: '13px',
                 borderRadius: '12px'
@@ -558,7 +591,7 @@ export default function QuickLog() {
                 background: 'var(--primary)', 
                 color: 'white', 
                 opacity: (activeFeedSession && !isActive) || isSubmitting ? 0.45 : 1,
-                boxShadow: isActive ? '0 0 18px 4px var(--primary)' : 'none',
+                boxShadow: 'none',
                 border: isActive ? '2px solid white' : 'none',
                 padding: '10px 4px',
                 fontSize: '13px',
@@ -612,7 +645,7 @@ export default function QuickLog() {
                 background: 'var(--secondary-light)', 
                 color: 'var(--secondary)', 
                 opacity: isSubmitting ? 0.45 : 1,
-                boxShadow: isActive ? '0 0 18px 4px #10b981' : 'none',
+                boxShadow: 'none',
                 border: isActive ? '1.5px solid #10b981' : 'none',
                 padding: '10px 4px',
                 fontSize: '13px',
@@ -632,7 +665,7 @@ export default function QuickLog() {
                 background: '#ffe1ea', 
                 color: 'var(--accent)', 
                 opacity: isSubmitting ? 0.45 : 1,
-                boxShadow: isActive ? '0 0 18px 4px #f472b6' : 'none',
+                boxShadow: 'none',
                 border: isActive ? '1.5px solid #f472b6' : 'none',
                 padding: '10px 4px',
                 fontSize: '13px',

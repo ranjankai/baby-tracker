@@ -247,7 +247,9 @@ export function BabyProvider({ children }) {
 
     if (!supabase) return null;
     try {
-      const { data, error } = await supabase.from('baby_events').insert([{ ...newEvent, id: undefined }]).select();
+      // Create a clean payload for database insertion without temp ID
+      const dbPayload = { start_time: newEvent.start_time, ...eventData };
+      const { data, error } = await supabase.from('baby_events').insert([dbPayload]).select();
       if (error) throw error;
       const savedEvent = data ? data[0] : null;
       if (savedEvent) {
