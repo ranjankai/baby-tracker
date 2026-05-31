@@ -132,30 +132,6 @@ function ActiveSessionCapsule({ session, onPause, onResume, onStop, tummyTarget,
 
       {/* Right side: Controls & Flip Timer */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        {/* Play/Pause Button */}
-        <button 
-          onClick={() => session.is_paused ? onResume(session) : onPause(session)}
-          style={{
-            width: '28px',
-            height: '28px',
-            borderRadius: '50%',
-            border: 'none',
-            background: session.is_paused ? 'var(--secondary-light)' : 'rgba(0, 0, 0, 0.04)',
-            color: session.is_paused ? 'var(--secondary)' : 'var(--text-muted)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            flexShrink: 0
-          }}
-          title={session.is_paused ? 'Resume' : 'Pause'}
-        >
-          {session.is_paused ? <Play size={10} fill="currentColor" /> : <Pause size={10} fill="currentColor" />}
-        </button>
-
-        {/* Retro Flip Clock Timer */}
-        <FlipTimer seconds={timer} />
-
         {/* Circular Stop Button */}
         <button 
           onClick={() => onStop(session, false)}
@@ -175,6 +151,30 @@ function ActiveSessionCapsule({ session, onPause, onResume, onStop, tummyTarget,
           title="Stop"
         >
           <Square size={10} fill="currentColor" />
+        </button>
+
+        {/* Retro Flip Clock Timer */}
+        <FlipTimer seconds={timer} />
+
+        {/* Play/Pause Button */}
+        <button 
+          onClick={() => session.is_paused ? onResume(session) : onPause(session)}
+          style={{
+            width: '28px',
+            height: '28px',
+            borderRadius: '50%',
+            border: 'none',
+            background: session.is_paused ? 'var(--secondary-light)' : 'rgba(0, 0, 0, 0.04)',
+            color: session.is_paused ? 'var(--secondary)' : 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            flexShrink: 0
+          }}
+          title={session.is_paused ? 'Resume' : 'Pause'}
+        >
+          {session.is_paused ? <Play size={10} fill="currentColor" /> : <Pause size={10} fill="currentColor" />}
         </button>
       </div>
     </div>
