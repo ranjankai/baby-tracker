@@ -114,20 +114,9 @@ function ActiveSessionCapsule({ session, onPause, onResume, onStop, tummyTarget,
       margin: '2px 0',
       gap: '4px'
     }}>
-      {/* Left side: Icon + Activity Name */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-        <div style={{ 
-          background: 'var(--bg-card)', 
-          color: themeColor, 
-          padding: '6px', 
-          borderRadius: '10px', 
-          display: 'flex',
-          border: '1px solid var(--border-soft)',
-          flexShrink: 0
-        }}>
-          {Icon && <Icon size={16} flip={session.type === 'mom_r'} />}
-        </div>
-        <span style={{ fontWeight: '700', fontSize: '13px', color: '#4a4a4a', whiteSpace: 'nowrap', flexShrink: 0 }}>
+      {/* Left side: Activity Name */}
+      <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+        <span style={{ fontWeight: '700', fontSize: '14px', color: '#4a4a4a', whiteSpace: 'nowrap', flexShrink: 0, paddingLeft: '4px' }}>
           {label}
         </span>
       </div>
