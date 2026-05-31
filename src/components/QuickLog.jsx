@@ -106,32 +106,34 @@ function ActiveSessionCapsule({ session, onPause, onResume, onStop, tummyTarget,
       alignItems: 'center', 
       justifyContent: 'space-between', 
       width: '100%',
-      padding: '8px 12px',
+      padding: '8px 10px',
       borderRadius: '16px',
       border: '1.5px solid var(--border-soft)',
       background: 'rgba(255, 255, 255, 0.85)',
       boxSizing: 'border-box',
-      margin: '2px 0'
+      margin: '2px 0',
+      gap: '4px'
     }}>
       {/* Left side: Icon + Activity Name */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
         <div style={{ 
           background: 'var(--bg-card)', 
           color: themeColor, 
           padding: '6px', 
           borderRadius: '10px', 
           display: 'flex',
-          border: '1px solid var(--border-soft)'
+          border: '1px solid var(--border-soft)',
+          flexShrink: 0
         }}>
           {Icon && <Icon size={16} flip={session.type === 'mom_r'} />}
         </div>
-        <span style={{ fontWeight: '700', fontSize: '14px', color: '#4a4a4a' }}>
+        <span style={{ fontWeight: '700', fontSize: '13px', color: '#4a4a4a', whiteSpace: 'nowrap', flexShrink: 0 }}>
           {label}
         </span>
       </div>
 
       {/* Right side: Controls & Flip Timer */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
         {/* Circular Stop Button */}
         <button 
           onClick={() => onStop(session, false)}
