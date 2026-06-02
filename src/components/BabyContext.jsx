@@ -25,6 +25,7 @@ export function BabyProvider({ children }) {
   const [allTimeStats, setAllTimeStats] = useState({ totalDiapers: 0, firstEventTime: null });
   const [aiInsights, setAiInsights] = useState(null);
   const [weightLogs, setWeightLogs] = useState([]);
+  const inFlightInserts = useRef({});
 
   // Tummy and Massage customizable targets (in minutes, persisted)
   const [tummyTarget, setTummyTargetState] = useState(() => {
@@ -246,12 +247,20 @@ export function BabyProvider({ children }) {
     }
 
     if (!supabase) return null;
-    try {
-      // Create a clean payload for database insertion without temp ID
-      const dbPayload = { start_time: newEvent.start_time, ...eventData };
+    
+    // Create a clean payload for database insertion without temp ID
+    const dbPayload = { start_time: newEvent.start_time, ...eventData };
+    const promise = (async () => {
       const { data, error } = await supabase.from('baby_events').insert([dbPayload]).select();
       if (error) throw error;
-      const savedEvent = data ? data[0] : null;
+      return data ? data[0] : null;
+    })();
+
+    // Track the in-flight insert
+    inFlightInserts.current[tempId] = promise;
+
+    try {
+      const savedEvent = await promise;
       if (savedEvent) {
         if (['top', 'mom_l', 'mom_r'].includes(savedEvent.type)) {
           setLastFeed(savedEvent);
@@ -272,19 +281,46 @@ export function BabyProvider({ children }) {
         setActiveMassage(prev => prev?.id === tempId ? null : prev);
       }
       throw error;
+    } finally {
+      // Clean up the ref once resolved/rejected
+      delete inFlightInserts.current[tempId];
     }
   };
 
   const updateEvent = async (id, updates) => {
     if (!supabase) return false;
-    // Optimistic: update lastFeed immediately if this is the active feed.
-    // This lets QuickLog's useEffect([lastFeed]) fire instantly without waiting
-    // for the DB round-trip + realtime + fetchGlobalState chain.
+    
+    // Optimistic state updates
     setLastFeed(prev => prev?.id === id ? { ...prev, ...updates } : prev);
     setActiveTummyTime(prev => prev?.id === id ? { ...prev, ...updates } : prev);
     setActiveMassage(prev => prev?.id === id ? { ...prev, ...updates } : prev);
-    const { data } = await supabase.from('baby_events').update(updates).eq('id', id).select();
-    return !!data;
+
+    let targetId = id;
+
+    // If it's a temporary ID, wait for the in-flight insert to resolve, then use the real database ID
+    if (typeof id === 'string' && id.startsWith('temp_')) {
+      try {
+        const insertPromise = inFlightInserts.current[id];
+        if (insertPromise) {
+          const savedEvent = await insertPromise;
+          if (savedEvent) {
+            targetId = savedEvent.id;
+          }
+        }
+      } catch (err) {
+        console.error('[BabyContext] Error waiting for in-flight insert during updateEvent:', err);
+        return false;
+      }
+    }
+
+    try {
+      const { data, error } = await supabase.from('baby_events').update(updates).eq('id', targetId).select();
+      if (error) throw error;
+      return !!data;
+    } catch (err) {
+      console.error('[BabyContext] updateEvent DB error:', err);
+      return false;
+    }
   };
 
   const deleteEvent = async (id) => {
