@@ -3,6 +3,14 @@ import { Milk, Timer, X, MessageCircle, Square, Play, Pause, Sparkles } from 'lu
 import { Diaper, TummyTime, SpitUp, TopFeed, Breastfeed, QuickLogIcon } from './Icons';
 import { useBaby } from './BabyContext';
 
+// ── Timer Formatter ──────────────────────────────────────────────────────────
+function formatTimer(seconds) {
+  if (isNaN(seconds) || seconds < 0) return '00:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
 // ── Retro Flip Split-Flap Clock ──────────────────────────────────────────────
 function FlipTimer({ seconds }) {
   const mins = Math.floor(seconds / 60);
