@@ -26,6 +26,7 @@ export function BabyProvider({ children }) {
   const [aiInsights, setAiInsights] = useState(null);
   const [weightLogs, setWeightLogs] = useState([]);
   const inFlightInserts = useRef({});
+  const tempToRealIdMap = useRef({});
 
   // Tummy and Massage customizable targets (in minutes, persisted)
   const [tummyTarget, setTummyTargetState] = useState(() => {
@@ -262,6 +263,9 @@ export function BabyProvider({ children }) {
     try {
       const savedEvent = await promise;
       if (savedEvent) {
+        // Map the temporary ID to the resolved database ID
+        tempToRealIdMap.current[tempId] = savedEvent.id;
+
         if (['top', 'mom_l', 'mom_r'].includes(savedEvent.type)) {
           setLastFeed(savedEvent);
         } else if (savedEvent.type === 'tummy_time') {
@@ -290,28 +294,40 @@ export function BabyProvider({ children }) {
   const updateEvent = async (id, updates) => {
     if (!supabase) return false;
     
-    // Optimistic state updates
-    setLastFeed(prev => prev?.id === id ? { ...prev, ...updates } : prev);
-    setActiveTummyTime(prev => prev?.id === id ? { ...prev, ...updates } : prev);
-    setActiveMassage(prev => prev?.id === id ? { ...prev, ...updates } : prev);
-
     let targetId = id;
+    const originalId = id;
 
-    // If it's a temporary ID, wait for the in-flight insert to resolve, then use the real database ID
+    // Check if there's an in-flight mapping for this temporary ID
     if (typeof id === 'string' && id.startsWith('temp_')) {
-      try {
-        const insertPromise = inFlightInserts.current[id];
-        if (insertPromise) {
-          const savedEvent = await insertPromise;
-          if (savedEvent) {
-            targetId = savedEvent.id;
+      if (tempToRealIdMap.current[id]) {
+        targetId = tempToRealIdMap.current[id];
+      } else {
+        // Wait for the in-flight insert promise to resolve
+        try {
+          const insertPromise = inFlightInserts.current[id];
+          if (insertPromise) {
+            const savedEvent = await insertPromise;
+            if (savedEvent) {
+              targetId = savedEvent.id;
+              tempToRealIdMap.current[id] = savedEvent.id;
+            }
           }
+        } catch (err) {
+          console.error('[BabyContext] Error waiting for in-flight insert during updateEvent:', err);
+          return false;
         }
-      } catch (err) {
-        console.error('[BabyContext] Error waiting for in-flight insert during updateEvent:', err);
-        return false;
       }
     }
+
+    // Optimistic state updates - match either the original (temp) ID or the resolved database ID
+    const matchesId = (prevEvent) => {
+      if (!prevEvent) return false;
+      return prevEvent.id === originalId || prevEvent.id === targetId;
+    };
+
+    setLastFeed(prev => matchesId(prev) ? { ...prev, ...updates } : prev);
+    setActiveTummyTime(prev => matchesId(prev) ? { ...prev, ...updates } : prev);
+    setActiveMassage(prev => matchesId(prev) ? { ...prev, ...updates } : prev);
 
     try {
       const { data, error } = await supabase.from('baby_events').update(updates).eq('id', targetId).select();

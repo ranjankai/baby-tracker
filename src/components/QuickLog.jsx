@@ -275,14 +275,14 @@ export default function QuickLog() {
 
 
   const handlePauseSession = (session) => {
-    if (isPausing) return;
+    if (isPausing || session.is_paused) return;
     setIsPausing(true);
     const pausedAt = new Date().toISOString();
     updateEvent(session.id, { is_paused: true, paused_at: pausedAt }).then(() => setIsPausing(false));
   };
 
   const handleResumeSession = (session) => {
-    if (isPausing) return;
+    if (isPausing || !session.is_paused || !session.paused_at) return;
     setIsPausing(true);
     const pauseDuration = Date.now() - new Date(session.paused_at).getTime();
     const newTotalPaused = (session.total_paused_ms || 0) + pauseDuration;
