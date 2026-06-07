@@ -134,6 +134,7 @@ function ActiveSessionCapsule({ session, onPause, onResume, onStop, tummyTarget,
         {/* Circular Stop Button */}
         <button 
           onClick={() => onStop(session, false)}
+          className="timer-control-btn"
           style={{
             width: '28px',
             height: '28px',
@@ -158,6 +159,7 @@ function ActiveSessionCapsule({ session, onPause, onResume, onStop, tummyTarget,
         {/* Play/Pause Button */}
         <button 
           onClick={() => session.is_paused ? onResume(session) : onPause(session)}
+          className="timer-control-btn"
           style={{
             width: '28px',
             height: '28px',
