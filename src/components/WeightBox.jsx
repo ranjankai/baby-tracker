@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useBaby } from './BabyContext';
-import { Settings, Scale, X } from 'lucide-react';
+import { Plus, Scale, X } from 'lucide-react';
 
 export default function WeightBox() {
   const { weightLogs, addEvent } = useBaby();
@@ -183,7 +183,7 @@ export default function WeightBox() {
             onClick={() => setShowWeightModal(true)} 
             style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '8px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
           >
-            <Settings size={15} />
+            <Plus size={16} />
           </button>
         </div>
 
