@@ -95,7 +95,7 @@ h2 {
   font-weight: 600;
   width: 100%;
   cursor: pointer;
-  transition: transform 0.2s ease, background-color 0.2s ease;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease, border-color 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -103,8 +103,12 @@ h2 {
   white-space: nowrap;
 }
 
-.button-primary:active {
-  transform: scale(0.98);
+.button-primary:hover:not(:disabled) {
+  transform: scale(1.05);
+}
+
+.button-primary:active:not(:disabled) {
+  transform: scale(0.95);
   background-color: #8c7be0;
 }
 
