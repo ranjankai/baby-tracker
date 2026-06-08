@@ -234,6 +234,9 @@ export default function EventList() {
         if (filter === 'diaper_free') {
           return e.type === 'diaper' && e.is_diaper_free === true;
         }
+        if (filter === 'diaper') {
+          return e.type === 'diaper' && !e.is_diaper_free;
+        }
         if (filter === 'pee') {
           return e.type === 'diaper' && ['light', 'heavy'].includes(e.pee_amount);
         }
