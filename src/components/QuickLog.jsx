@@ -261,10 +261,13 @@ export default function QuickLog() {
   const [suggestedSide, setSuggestedSide] = useState(null);
 
   useEffect(() => {
-    if (lastFeed && (lastFeed.type === 'mom_l' || lastFeed.type === 'mom_r')) {
-      setSuggestedSide(lastFeed.type === 'mom_l' ? 'mom_r' : 'mom_l');
+    const lastBreastfeed = events.find(e => e.type === 'mom_l' || e.type === 'mom_r');
+    if (lastBreastfeed) {
+      setSuggestedSide(lastBreastfeed.type === 'mom_l' ? 'mom_r' : 'mom_l');
+    } else {
+      setSuggestedSide(null);
     }
-  }, [lastFeed]);
+  }, [events]);
 
   const getLocalDatetime = () => {
     const now = new Date();
