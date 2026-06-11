@@ -210,19 +210,20 @@ h2 {
 }
 
 .suggested-side::after {
-  content: 'Next?';
+  content: '';
   position: absolute;
-  top: -10px;
-  right: 5px;
-  background: var(--primary);
-  color: white;
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 99px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  background-color: var(--primary);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E");
+  background-size: 8px 8px;
+  background-position: center;
+  background-repeat: no-repeat;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  border: 1.5px solid white;
 }
 
 /* Modals */
