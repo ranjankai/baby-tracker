@@ -598,8 +598,8 @@ export default function QuickLog() {
             <button className="button-primary" onClick={() => isActive ? handleStopSession(activeFeedSession) : handleStartBottle()}
               disabled={isDisabled}
               style={{ 
-                background: 'var(--primary)', 
-                color: 'white', 
+                background: isActive ? 'var(--primary)' : 'var(--primary-light)', 
+                color: isActive ? 'white' : 'var(--primary)', 
                 opacity: isDisabled ? 0.45 : 1,
                 boxShadow: 'none',
                 border: isActive ? '2px solid white' : 'none',
