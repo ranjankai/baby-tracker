@@ -721,19 +721,8 @@ export default function EventList() {
                     </button>
                   ))}
                 </div>
-
-                <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
-                  <input type="checkbox" id="edit_diaper_free"
-                    checked={!!editingEvent.is_diaper_free}
-                    onChange={(e) => setEditingEvent({ ...editingEvent, is_diaper_free: e.target.checked })}
-                    style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
-                  />
-                  <label htmlFor="edit_diaper_free" style={{ fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}>
-                    Diaper Free (Accident / Tummy Time)
-                  </label>
-                </div>
-              </>
-            )}
+               </>
+             )}
 
             {editingEvent.type === 'spit_up' && (
               <>
