@@ -125,13 +125,13 @@ export function BabyProvider({ children }) {
 
     const fetchGlobalState = async () => {
       try {
-        // 1. Fetch latest 100 events to calculate metrics (Today's counts, last timestamps)
+        // 1. Fetch latest 1000 events to calculate metrics (Today's counts, last timestamps)
         // This is independent of the UI filters applied to the main activity list.
         const { data: recentEvents } = await supabase
           .from('baby_events')
           .select('*')
           .order('start_time', { ascending: false })
-          .limit(100);
+          .limit(1000);
 
         // 2. Fetch baby_settings
         const { data: settingsData } = await supabase
