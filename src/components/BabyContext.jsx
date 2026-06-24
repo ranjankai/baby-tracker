@@ -197,8 +197,9 @@ export function BabyProvider({ children }) {
 
     const channel = supabase.channel('events-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'baby_events' }, () => {
+        // Only refresh the visible event list. Session state (lastFeed, active timers)
+        // is local-first and must NOT be overwritten by Realtime to avoid UI flicker.
         fetchEvents(stateRef.current.page, stateRef.current.filters, stateRef.current.dateFilter);
-        fetchGlobalState(); // Update lastFeed and stats on any change
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'baby_settings' }, (payload) => {
         const { new: newRow } = payload;

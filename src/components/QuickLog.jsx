@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Milk, Timer, X, MessageCircle, Square, Play, Pause, Sparkles } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { MessageCircle, Square, Play, Pause, Sparkles } from 'lucide-react';
 import { Diaper, TummyTime, SpitUp, TopFeed, Breastfeed, QuickLogIcon } from './Icons';
 import { useBaby } from './BabyContext';
 
@@ -234,8 +234,9 @@ export default function QuickLog() {
 
   const [isSubmitting, setIsSubmitting] = useState(null);
   const [bottleElapsed, setBottleElapsed] = useState(0);
-  const [isStopping,    setIsStopping]    = useState(false);
-  const [isPausing,     setIsPausing]     = useState(false);
+  // Single ref-based debounce for all timer actions — no state, no re-renders
+  const actionDebounce = useRef(0);
+  const DEBOUNCE_MS = 600;
 
   // ── Diaper / Diaper Free modal ─────────────────────────────────────────────
   const [showDiaperModal, setShowDiaperModal] = useState(false);
@@ -279,62 +280,58 @@ export default function QuickLog() {
   const isFeed = (type) => FEED_TYPES.includes(type);
 
 
+  const isDebounced = () => {
+    const now = Date.now();
+    if (now - actionDebounce.current < DEBOUNCE_MS) return true;
+    actionDebounce.current = now;
+    return false;
+  };
+
   const handlePauseSession = (session) => {
-    if (isPausing || session.is_paused) return;
-    setIsPausing(true);
+    if (isDebounced() || session.is_paused) return;
     const pausedAt = new Date().toISOString();
-    updateEvent(session.id, { is_paused: true, paused_at: pausedAt }).then(() => setIsPausing(false));
+    // Optimistic local update — fires instantly, DB write async
+    updateEvent(session.id, { is_paused: true, paused_at: pausedAt });
   };
 
   const handleResumeSession = (session) => {
-    if (isPausing || !session.is_paused || !session.paused_at) return;
-    setIsPausing(true);
+    if (isDebounced() || !session.is_paused || !session.paused_at) return;
     const pauseDuration = Date.now() - new Date(session.paused_at).getTime();
     const newTotalPaused = (session.total_paused_ms || 0) + pauseDuration;
-    updateEvent(session.id, { is_paused: false, paused_at: null, total_paused_ms: newTotalPaused }).then(() => setIsPausing(false));
+    // Optimistic local update — fires instantly, DB write async
+    updateEvent(session.id, { is_paused: false, paused_at: null, total_paused_ms: newTotalPaused });
   };
 
-  const handleStopSession = async (session, isAutoStop = false) => {
-    if (isStopping) return;
-    setIsStopping(true);
+  const handleStopSession = (session, isAutoStop = false) => {
+    if (isDebounced() && !isAutoStop) return;
 
     if (session.type === 'top') {
-      let finalTimer = 0;
       const start = new Date(session.start_time).getTime();
       const totalPaused = session.total_paused_ms || 0;
-      if (session.is_paused) {
-        finalTimer = Math.floor(((new Date(session.paused_at).getTime() - start) - totalPaused) / 1000);
-      } else {
-        finalTimer = Math.floor(((Date.now() - start) - totalPaused) / 1000);
-      }
+      const finalTimer = session.is_paused
+        ? Math.floor(((new Date(session.paused_at).getTime() - start) - totalPaused) / 1000)
+        : Math.floor(((Date.now() - start) - totalPaused) / 1000);
       setBottleStopId(session.id);
       setBottleElapsed(finalTimer);
       setBottleAmount('');
       setBottleNote('');
       setShowBottleStopModal(true);
-      setIsStopping(false);
       return;
     }
 
-    let totalPaused = session.total_paused_ms || 0;
-    let endTime = new Date().toISOString();
-
-    if (session.is_paused) {
-      endTime = session.paused_at;
-    }
-
+    let endTime = session.is_paused ? session.paused_at : new Date().toISOString();
     if (isAutoStop) {
       const startMs = new Date(session.start_time).getTime();
-      endTime = new Date(startMs + (tummyTarget * 60) * 1000 + totalPaused).toISOString();
+      endTime = new Date(startMs + (tummyTarget * 60) * 1000 + (session.total_paused_ms || 0)).toISOString();
     }
 
-    await updateEvent(session.id, {
+    // Optimistic local update — fires instantly, DB write async
+    updateEvent(session.id, {
       end_time: endTime,
       is_paused: false,
       paused_at: null,
-      total_paused_ms: totalPaused
+      total_paused_ms: session.total_paused_ms || 0
     });
-    setIsStopping(false);
   };
 
   const handleStartMomFeed = async (side) => {
@@ -480,8 +477,6 @@ export default function QuickLog() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const activeFeedSession = lastFeed && isFeed(lastFeed.type) && !lastFeed.end_time;
-  const isBottleActive = activeFeedSession && lastFeed.type === 'top';
-
   const activeSessions = [];
   if (activeFeedSession) activeSessions.push(lastFeed);
   if (activeTummyTime) activeSessions.push(activeTummyTime);
@@ -496,12 +491,7 @@ export default function QuickLog() {
   const isTummyOrMassageActive = isTummyActive || isMassageActive;
 
   useEffect(() => {
-    if (anyActive) {
-      setIsSubmitting(null);
-    } else {
-      setIsStopping(false);
-      setIsPausing(false);
-    }
+    if (anyActive) setIsSubmitting(null);
   }, [anyActive]);
 
   // ── Render ────────────────────────────────────────────────────────────────
