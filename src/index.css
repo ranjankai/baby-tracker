@@ -104,7 +104,7 @@ h2 {
 }
 
 .button-primary:hover:not(:disabled) {
-  /* No scale on hover to match click-only feedback */
+  transform: scale(1.05);
 }
 
 .button-primary:active:not(:disabled) {
