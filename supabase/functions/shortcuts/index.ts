@@ -120,6 +120,22 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Prevent starting Tummy Time or Massage if a feed is active
+      if (["tummy_time", "massage"].includes(action)) {
+        const { data: activeFeeds } = await supabase
+          .from("baby_events")
+          .select("id")
+          .in("type", FEED_TYPES)
+          .is("end_time", null);
+
+        if (activeFeeds && activeFeeds.length > 0) {
+          return new Response(JSON.stringify({ error: "Cannot start activity while feeding session is active" }), {
+            status: 409,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+
       const payload = {
         type: action,
         start_time: new Date().toISOString(),
