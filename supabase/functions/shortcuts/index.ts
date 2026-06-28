@@ -12,7 +12,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// ── Human-readable labels for Watch prompts ───────────────────────────────────
 const LABELS: Record<string, string> = {
   mom_l:      "Mom (L) Feed",
   mom_r:      "Mom (R) Feed",
@@ -24,47 +23,6 @@ const LABELS: Record<string, string> = {
 const FEED_TYPES      = ["mom_l", "mom_r", "top"];
 const ALL_TIMED_TYPES = ["mom_l", "mom_r", "top", "tummy_time", "massage"];
 
-// ── Helper: stop a session by ID ──────────────────────────────────────────────
-async function stopSession(id: number, amountMl?: string) {
-  const { data: s } = await supabase.from("baby_events").select("*").eq("id", id).single();
-  if (!s) return;
-
-  const endTime = s.is_paused ? s.paused_at : new Date().toISOString();
-  const updates: Record<string, any> = {
-    end_time:         endTime,
-    is_paused:        false,
-    paused_at:        null,
-    total_paused_ms:  s.total_paused_ms || 0,
-  };
-  if (s.type === "top" && amountMl) updates.amount_ml = parseInt(amountMl, 10);
-  await supabase.from("baby_events").update(updates).eq("id", id);
-}
-
-// ── Helper: find first conflicting active session for a given action ──────────
-function findConflict(active: any[], action: string): any | null {
-  // Self already running
-  const self = active.find(e => e.type === action);
-  if (self) return self;
-
-  if (FEED_TYPES.includes(action)) {
-    // Another feed running
-    const otherFeed = active.find(e => FEED_TYPES.includes(e.type) && e.type !== action);
-    if (otherFeed) return otherFeed;
-    // Tummy or Massage blocking a feed
-    const blocker = active.find(e => ["tummy_time", "massage"].includes(e.type));
-    if (blocker) return blocker;
-  }
-
-  if (["tummy_time", "massage"].includes(action)) {
-    // A feed blocking tummy/massage
-    const blockingFeed = active.find(e => FEED_TYPES.includes(e.type));
-    if (blockingFeed) return blockingFeed;
-    // Note: tummy + massage CAN run together — no conflict between them
-  }
-
-  return null;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") {
@@ -75,29 +33,31 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { token, action, subAction, peeAmount, poopAmount, amountMl, conflictingEventId } = body;
+    const { token, action, subAction, peeAmount, poopAmount, amountMl } = body;
 
-    // Auth
+    // ── Auth ──────────────────────────────────────────────────────────────────
     if (!SHORTCUT_TOKEN || token !== SHORTCUT_TOKEN) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // ── DIAPER / DIAPER FREE (no conflict logic needed) ───────────────────────
+    const json = (payload: object) =>
+      new Response(JSON.stringify(payload), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+
+    // ── DIAPER / DIAPER FREE ──────────────────────────────────────────────────
     if (action === "diaper" || action === "diaper_free") {
       const { data, error } = await supabase.from("baby_events").insert([{
-        type:          "diaper",
+        type:           "diaper",
         is_diaper_free: action === "diaper_free",
-        pee_amount:    peeAmount  || "none",
-        poop_amount:   poopAmount || "none",
-        start_time:    new Date().toISOString(),
+        pee_amount:     peeAmount  || "none",
+        poop_amount:    poopAmount || "none",
+        start_time:     new Date().toISOString(),
       }]).select().single();
       if (error) throw error;
-      return new Response(JSON.stringify({
-        success: true,
-        message: action === "diaper_free" ? "Diaper free logged!" : "Diaper change logged!",
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return json({ success: true, message: action === "diaper_free" ? "Diaper free logged!" : "Diaper change logged!" });
     }
 
     // ── VALIDATE ACTION ───────────────────────────────────────────────────────
@@ -107,68 +67,68 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── STATUS ────────────────────────────────────────────────────────────────
+    // ── STATUS: is this specific action currently active? ─────────────────────
     if (subAction === "status") {
-      const { data: activeEvents } = await supabase
-        .from("baby_events").select("*")
+      const { data } = await supabase.from("baby_events").select("*")
         .eq("type", action).is("end_time", null)
         .order("start_time", { ascending: false });
-      const active = activeEvents?.[0] || null;
-      return new Response(JSON.stringify({
+      const active = data?.[0] || null;
+      return json({
         success:  true,
         isActive: !!active,
         isPaused: active ? !!active.is_paused : false,
         session:  active,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      });
     }
 
-    // ── START — smart conflict detection ──────────────────────────────────────
-    if (subAction === "start") {
-      const { data: allActive } = await supabase
-        .from("baby_events").select("*")
+    // ── CONF_CHECK: are there any conflicting active sessions? ────────────────
+    // Returns { conflict: false } or { conflict: true, conflictType, conflictLabel,
+    //   conflictingEventId, isPaused, message }
+    if (subAction === "conf_check") {
+      const { data: allActive } = await supabase.from("baby_events").select("*")
         .in("type", ALL_TIMED_TYPES).is("end_time", null);
+      const active = allActive || [];
 
-      const conflict = findConflict(allActive || [], action);
+      let conflicting: any = null;
 
-      if (conflict) {
-        const isSelf = conflict.type === action;
-        return new Response(JSON.stringify({
-          conflict:           true,
-          conflictType:       conflict.type,
-          conflictLabel:      LABELS[conflict.type],
-          conflictingEventId: conflict.id,
-          isPaused:           !!conflict.is_paused,
-          message:            isSelf
-            ? `${LABELS[action]} is already ${conflict.is_paused ? "paused" : "running"}.`
-            : `${LABELS[conflict.type]} is ${conflict.is_paused ? "paused" : "running"}. Stop it and start ${LABELS[action]}?`,
-        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (FEED_TYPES.includes(action)) {
+        // Another feed running
+        conflicting = active.find(e => FEED_TYPES.includes(e.type) && e.type !== action)
+          // Or tummy/massage blocking a feed
+          ?? active.find(e => ["tummy_time", "massage"].includes(e.type));
       }
 
-      // No conflict — start cleanly
-      const { data, error } = await supabase
-        .from("baby_events")
-        .insert([{ type: action, start_time: new Date().toISOString() }])
-        .select().single();
-      if (error) throw error;
-      return new Response(JSON.stringify({
-        success: true, message: `${LABELS[action]} started!`,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (["tummy_time", "massage"].includes(action)) {
+        // A feed blocking tummy/massage (tummy + massage can co-exist)
+        conflicting = active.find(e => FEED_TYPES.includes(e.type));
+      }
+
+      if (!conflicting) return json({ conflict: false });
+
+      return json({
+        conflict:           true,
+        conflictType:       conflicting.type,
+        conflictLabel:      LABELS[conflicting.type],
+        conflictingEventId: conflicting.id,
+        isPaused:           !!conflicting.is_paused,
+        message:            `${LABELS[conflicting.type]} is ${conflicting.is_paused ? "paused" : "running"}. Stop it?`,
+      });
     }
 
-    // ── FORCE_START — stop conflict then start ────────────────────────────────
-    // Called after user confirms "Yes, stop X and start Y" on the Watch
-    if (subAction === "force_start") {
-      if (conflictingEventId) {
-        await stopSession(conflictingEventId, amountMl);
+    // ── START: just start — Shortcut has already resolved conflicts ───────────
+    if (subAction === "start") {
+      // Safety: prevent duplicate session of same type
+      const { data: existing } = await supabase.from("baby_events").select("id")
+        .eq("type", action).is("end_time", null);
+      if (existing && existing.length > 0) {
+        return json({ success: false, message: `${LABELS[action]} is already active.` });
       }
-      const { data, error } = await supabase
-        .from("baby_events")
+
+      const { data, error } = await supabase.from("baby_events")
         .insert([{ type: action, start_time: new Date().toISOString() }])
         .select().single();
       if (error) throw error;
-      return new Response(JSON.stringify({
-        success: true, message: `${LABELS[action]} started!`,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return json({ success: true, message: `${LABELS[action]} started!` });
     }
 
     // ── PAUSE / RESUME / STOP — find active session first ────────────────────
@@ -185,40 +145,33 @@ Deno.serve(async (req) => {
     const session = activeList[0];
 
     if (subAction === "pause") {
-      if (session.is_paused) {
-        return new Response(JSON.stringify({ success: true, message: "Already paused" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+      if (session.is_paused) return json({ success: true, message: "Already paused" });
       await supabase.from("baby_events")
         .update({ is_paused: true, paused_at: new Date().toISOString() })
         .eq("id", session.id);
-      return new Response(JSON.stringify({ success: true, message: `${LABELS[action]} paused!` }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ success: true, message: `${LABELS[action]} paused!` });
     }
 
     if (subAction === "resume") {
-      if (!session.is_paused || !session.paused_at) {
-        return new Response(JSON.stringify({ success: true, message: "Not paused" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const pauseDuration  = Date.now() - new Date(session.paused_at).getTime();
-      const newTotalPaused = (session.total_paused_ms || 0) + pauseDuration;
+      if (!session.is_paused || !session.paused_at) return json({ success: true, message: "Not paused" });
+      const newTotalPaused = (session.total_paused_ms || 0) + (Date.now() - new Date(session.paused_at).getTime());
       await supabase.from("baby_events")
         .update({ is_paused: false, paused_at: null, total_paused_ms: newTotalPaused })
         .eq("id", session.id);
-      return new Response(JSON.stringify({ success: true, message: `${LABELS[action]} resumed!` }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ success: true, message: `${LABELS[action]} resumed!` });
     }
 
     if (subAction === "stop") {
-      await stopSession(session.id, amountMl);
-      return new Response(JSON.stringify({ success: true, message: `${LABELS[action]} stopped!` }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const endTime = session.is_paused ? session.paused_at : new Date().toISOString();
+      const updates: Record<string, any> = {
+        end_time:        endTime,
+        is_paused:       false,
+        paused_at:       null,
+        total_paused_ms: session.total_paused_ms || 0,
+      };
+      if (action === "top" && amountMl) updates.amount_ml = parseInt(amountMl, 10);
+      await supabase.from("baby_events").update(updates).eq("id", session.id);
+      return json({ success: true, message: `${LABELS[action]} stopped!` });
     }
 
     return new Response(JSON.stringify({ error: "Invalid subAction" }), {
