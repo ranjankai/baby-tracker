@@ -232,7 +232,6 @@ export default function QuickLog() {
     massageTarget
   } = useBaby();
 
-  const [isSubmitting, setIsSubmitting] = useState(null);
   const [bottleElapsed, setBottleElapsed] = useState(0);
   // Single ref-based debounce for all timer actions — no state, no re-renders
   const actionDebounce = useRef(0);
@@ -335,70 +334,46 @@ export default function QuickLog() {
   };
 
   const handleStartMomFeed = async (side) => {
-    setIsSubmitting(side);
-    const timeout = setTimeout(() => setIsSubmitting(null), 5000); // 5s safety hatch
+    if (isDebounced()) return;
     try {
       await addEvent({ type: side === 'left' ? 'mom_l' : 'mom_r' });
-      setIsSubmitting(null);
     } catch (error) {
       if (error?.code === '23505') {
         window.location.reload();
-      } else {
-        setIsSubmitting(null);
       }
-    } finally {
-      clearTimeout(timeout);
     }
   };
 
   const handleStartBottle = async () => {
-    setIsSubmitting('top');
-    const timeout = setTimeout(() => setIsSubmitting(null), 5000); // 5s safety hatch
+    if (isDebounced()) return;
     try {
       await addEvent({ type: 'top' });
-      setIsSubmitting(null);
     } catch (error) {
       if (error?.code === '23505') {
         window.location.reload();
-      } else {
-        setIsSubmitting(null);
       }
-    } finally {
-      clearTimeout(timeout);
     }
   };
 
   const handleStartTummyTime = async () => {
-    setIsSubmitting('tummy_time');
-    const timeout = setTimeout(() => setIsSubmitting(null), 5000); // 5s safety hatch
+    if (isDebounced()) return;
     try {
       await addEvent({ type: 'tummy_time' });
-      setIsSubmitting(null);
     } catch (error) {
       if (error?.code === '23505') {
         window.location.reload();
-      } else {
-        setIsSubmitting(null);
       }
-    } finally {
-      clearTimeout(timeout);
     }
   };
 
   const handleStartMassage = async () => {
-    setIsSubmitting('massage');
-    const timeout = setTimeout(() => setIsSubmitting(null), 5000); // 5s safety hatch
+    if (isDebounced()) return;
     try {
       await addEvent({ type: 'massage' });
-      setIsSubmitting(null);
     } catch (error) {
       if (error?.code === '23505') {
         window.location.reload();
-      } else {
-        setIsSubmitting(null);
       }
-    } finally {
-      clearTimeout(timeout);
     }
   };
 
@@ -490,10 +465,6 @@ export default function QuickLog() {
   const isMassageActive = !!activeMassage;
   const isTummyOrMassageActive = isTummyActive || isMassageActive;
 
-  useEffect(() => {
-    if (anyActive) setIsSubmitting(null);
-  }, [anyActive]);
-
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="card">
@@ -541,7 +512,7 @@ export default function QuickLog() {
         {(() => {
           const isActive = activeFeedSession?.type === 'mom_l';
           const isSuggested = !activeFeedSession && suggestedSide === 'mom_l';
-          const isDisabled = (isFeedActive && !isActive) || isTummyOrMassageActive || isSubmitting !== null;
+          const isDisabled = (isFeedActive && !isActive) || isTummyOrMassageActive;
           return (
             <button className={`button-primary ${isSuggested ? 'suggested-side' : ''}`} 
               onClick={() => isActive ? handleStopSession(activeFeedSession) : handleStartMomFeed('left')}
@@ -564,7 +535,7 @@ export default function QuickLog() {
         {(() => {
           const isActive = activeFeedSession?.type === 'mom_r';
           const isSuggested = !activeFeedSession && suggestedSide === 'mom_r';
-          const isDisabled = (isFeedActive && !isActive) || isTummyOrMassageActive || isSubmitting !== null;
+          const isDisabled = (isFeedActive && !isActive) || isTummyOrMassageActive;
           return (
             <button className={`button-primary ${isSuggested ? 'suggested-side' : ''}`} 
               onClick={() => isActive ? handleStopSession(activeFeedSession) : handleStartMomFeed('right')}
@@ -586,7 +557,7 @@ export default function QuickLog() {
 
         {(() => {
           const isActive = activeFeedSession?.type === 'top';
-          const isDisabled = (isFeedActive && !isActive) || isTummyOrMassageActive || isSubmitting !== null;
+          const isDisabled = (isFeedActive && !isActive) || isTummyOrMassageActive;
           return (
             <button className="button-primary" onClick={() => isActive ? handleStopSession(activeFeedSession) : handleStartBottle()}
               disabled={isDisabled}
@@ -606,11 +577,9 @@ export default function QuickLog() {
         })()}
 
         <button className="button-primary" onClick={openSpitUpModal}
-          disabled={isSubmitting !== null}
           style={{ 
             background: '#fef3c7', 
             color: '#b45309',
-            opacity: isSubmitting !== null ? 0.45 : 1,
             padding: '10px 4px',
             fontSize: '13px',
             borderRadius: '12px'
@@ -620,11 +589,9 @@ export default function QuickLog() {
 
         {/* Row 2: Outputs & Timed activities */}
         <button className="button-primary" onClick={() => openDiaperModal(false)}
-          disabled={isSubmitting !== null}
           style={{ 
             background: 'var(--secondary-light)', 
             color: 'var(--secondary)',
-            opacity: isSubmitting !== null ? 0.45 : 1,
             padding: '10px 4px',
             fontSize: '13px',
             borderRadius: '12px'
@@ -633,11 +600,9 @@ export default function QuickLog() {
         </button>
 
         <button className="button-primary" onClick={() => openDiaperModal(true)}
-          disabled={isSubmitting !== null}
           style={{ 
             background: 'var(--secondary-light)', 
             color: 'var(--secondary)',
-            opacity: isSubmitting !== null ? 0.45 : 1,
             padding: '10px 4px',
             fontSize: '13px',
             borderRadius: '12px'
@@ -647,7 +612,7 @@ export default function QuickLog() {
 
         {(() => {
           const isActive = !!activeTummyTime;
-          const isDisabled = isFeedActive || isSubmitting !== null;
+          const isDisabled = isFeedActive;
           return (
             <button className="button-primary" onClick={() => isActive ? handleStopSession(activeTummyTime) : handleStartTummyTime()}
               disabled={isDisabled}
@@ -668,7 +633,7 @@ export default function QuickLog() {
 
         {(() => {
           const isActive = !!activeMassage;
-          const isDisabled = isFeedActive || isSubmitting !== null;
+          const isDisabled = isFeedActive;
           return (
             <button className="button-primary" onClick={() => isActive ? handleStopSession(activeMassage) : handleStartMassage()}
               disabled={isDisabled}
