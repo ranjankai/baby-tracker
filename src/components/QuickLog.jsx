@@ -458,7 +458,6 @@ export default function QuickLog() {
   if (activeMassage) activeSessions.push(activeMassage);
 
   const anyActive = activeSessions.length > 0;
-  const hasRunningTimer = activeSessions.some(s => !s.is_paused);
 
   // ── Wake Lock Management ───────────────────────────────────────────────────
   useEffect(() => {
@@ -474,12 +473,12 @@ export default function QuickLog() {
       }
     };
 
-    if (hasRunningTimer) {
+    if (anyActive) {
       requestWakeLock();
     }
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && hasRunningTimer) {
+      if (document.visibilityState === 'visible' && anyActive) {
         requestWakeLock();
       }
     };
@@ -492,7 +491,7 @@ export default function QuickLog() {
         wakeLock.release().catch(() => {});
       }
     };
-  }, [hasRunningTimer]);
+  }, [anyActive]);
 
   // Strict co-occurrence helper flags
   const isFeedActive = !!activeFeedSession;
